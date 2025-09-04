@@ -2,6 +2,8 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "CommonJS",
+    "moduleResolution": "node",
+    "types": ["node"],          // <— aggiungi questa riga
     "outDir": "dist",
     "rootDir": "./",
     "strict": true,
