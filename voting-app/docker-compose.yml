@@ -1,6 +1,31 @@
 version: "3.9"
 
 services:
+  postgres:
+      image: postgres:16
+      container_name: postgres
+      environment:
+        POSTGRES_USER: root
+        POSTGRES_PASSWORD: root
+        POSTGRES_DB: likelywho
+      ports:
+        - "5432:5432"                          # opzionale in dev
+      volumes:
+        - ./data/postgres:/var/lib/postgresql/data
+        - ./db/init:/docker-entrypoint-initdb.d:ro
+      networks: [app]
+
+    adminer:
+      image: adminer:4
+      container_name: adminer
+      ports:
+        - "8081:8080"
+      depends_on: [postgres]
+      networks: [app]
+
+networks:
+  app:
+    driver: bridge
   gateway:
     image: traefik:v3.1
     container_name: gateway
