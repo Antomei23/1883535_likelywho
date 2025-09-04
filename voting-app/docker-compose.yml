@@ -1,6 +1,77 @@
 version: "3.9"
 
 services:
+  postgres:
+      image: postgres:16
+      container_name: postgres
+      environment:
+        POSTGRES_USER: root
+        POSTGRES_PASSWORD: root
+        POSTGRES_DB: likelywho
+      ports:
+        - "5432:5432"                          # opzionale in dev
+      volumes:
+        - ./data/postgres:/var/lib/postgresql/data
+        - ./db/init:/docker-entrypoint-initdb.d:ro
+      networks: [app]
+
+    adminer:
+      image: adminer:4
+      container_name: adminer
+      ports:
+        - "8081:8080"
+      depends_on: [postgres]
+      networks: [app]
+      
+    auth-service:
+      build: ./services/auth-service
+      container_name: auth-service
+      env_file: ./services/auth-service/.env
+      depends_on: [postgres]
+      ports:
+        - "4000:4000"
+      networks: [app]
+
+    user-service:
+      build: ./services/user-service
+      container_name: user-service
+      env_file: ./services/user-service/.env
+      depends_on: [postgres]
+      ports:
+        - "4001:4001"
+      networks: [app]
+
+    question-service:
+      build: ./services/question-service
+      container_name: question-service
+      env_file: ./services/question-service/.env
+      depends_on: [postgres]
+      ports:
+        - "4002:4002"
+      networks: [app]
+
+    voting-service:
+      build: ./services/voting-service
+      container_name: voting-service
+      env_file: ./services/voting-service/.env
+      depends_on: [postgres]
+      ports:
+        - "4003:4003"
+      networks: [app]
+
+    notification-service:
+      build: ./services/notification-service
+      container_name: notification-service
+      env_file: ./services/notification-service/.env
+      depends_on: [postgres]
+      ports:
+        - "4004:4004"
+      networks: [app]
+
+  networks:
+    app:
+      driver: bridge
+
   api-gateway:
     build: ./api-gateway
     ports:
