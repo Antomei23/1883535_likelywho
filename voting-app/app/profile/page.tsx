@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 export default function ProfilePage() {
   const router = useRouter();
 
-  const goChangePassword = () => router.push("/resetpsw"); // <-- usa la tua pagina
+  const goChangePassword = () => router.push("/resetpsw"); 
   const goScores = () => router.push("/profile/scores");
   const goDeleteAccount = () => router.push("/profile/delete-account");
   const handleLogout = () => {
@@ -15,7 +15,18 @@ export default function ProfilePage() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.avatar} />
+      <div style={styles.avatar}>
+        {/* icona utente SVG */}
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="40"
+          height="40"
+          fill="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" />
+        </svg>
+      </div>
 
       <div style={styles.infoBox}>
         <div style={styles.row}>
@@ -68,6 +79,9 @@ const styles: { [key: string]: React.CSSProperties } = {
     background: "#ddd",
     border: "2px solid #000",
     margin: "20px 0",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   infoBox: {
     background: "#fff",

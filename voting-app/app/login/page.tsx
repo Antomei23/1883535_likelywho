@@ -15,7 +15,7 @@ const LoginPage = () => {
     <div style={styles.container}>
       <div style={styles.card}>
         {/* App Icon */}
-        <img src="/appiconexample.jpg" alt="App Icon" style={styles.icon} />
+        <img src="/appiconexample.png" alt="App Icon" style={styles.icon} />
 
         <h2 style={styles.title}>Sign In</h2>
 
