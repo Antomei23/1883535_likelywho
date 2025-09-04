@@ -1,0 +1,39 @@
+version: "3.9"
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "3000:3000"
+    depends_on:
+      - user-service
+      - question-service
+      - voting-service
+      - notification-service
+
+  user-service:
+    build: ./user-service
+    ports:
+      - "3001:3001"
+
+  question-service:
+    build: ./question-service
+    ports:
+      - "3002:3002"
+
+  voting-service:
+    build: ./voting-service
+    ports:
+      - "3003:3003"
+
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "3004:3004"
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3005:3005"
+    depends_on:
+      - api-gateway

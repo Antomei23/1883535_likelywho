@@ -1,0 +1,140 @@
+.page {
+    padding: 20px;
+    padding-bottom: 80px;
+    background: #f9fafc;
+    min-height: 100vh;
+    position: relative;
+  }
+  
+  .heading {
+    font-size: 22px;
+    font-weight: bold;
+    margin-bottom: 15px;
+    text-align: center;
+  }
+  
+  .searchInput {
+    width: 100%;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    margin-bottom: 16px;
+  }
+  
+  .toggleContainer {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+  }
+  
+  .toggleButton {
+    padding: 10px 16px;
+    font-size: 14px;
+    border-radius: 20px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    cursor: pointer;
+    transition: 0.2s ease;
+  }
+  
+  .toggleButton.active {
+    background-color: #007bff;
+    color: white;
+    border: none;
+  }
+  
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 100px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+  }
+  
+  .grid.fadeIn {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  
+  .categoryBox {
+    padding: 16px;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 16px;
+    cursor: pointer;
+    background-color: #f0f0f0;
+    color: #333;
+    transition: 0.2s ease;
+    user-select: none;
+  }
+  
+  .categoryBox:hover {
+    background-color: #e0e0e0;
+  }
+  
+  .categoryBox.selected {
+    background-color: #007bff;
+    color: white;
+    transform: scale(1.02);
+  }
+  
+  .confirmButton {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 14px 28px;
+    font-size: 16px;
+    border: none;
+    border-radius: 8px;
+    background-color: grey;
+    color: white;
+    cursor: not-allowed;
+    transition: background-color 0.3s ease;
+    z-index: 10;
+  }
+  
+  .confirmButton.activeConfirm {
+    background-color: #28a745;
+    cursor: pointer;
+  }
+  .addCategoryContainer {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+  
+  .newCategoryInput {
+    width: 70%;
+    padding: 12px;
+    font-size: 16px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+  }
+  
+  .addCategoryButton {
+    padding: 10px 16px;
+    font-size: 14px;
+    border-radius: 20px;
+    border: 1px solid #ccc;
+    background-color: #fff;
+    cursor: pointer;
+    transition: 0.2s ease;
+  }
+  
+  .addCategoryButton:hover {
+    background-color: #e0e0e0;
+  }
+  
+  .addCategoryButton:active {
+    background-color: #007bff;
+    color: white;
+    border: none;
+  }
+  
