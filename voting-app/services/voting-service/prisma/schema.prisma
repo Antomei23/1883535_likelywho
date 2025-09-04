@@ -1,0 +1,14 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") } // ?schema=votes
+
+model Vote {
+  id          String   @id @default(uuid())
+  questionId  String
+  voterId     String
+  votedUserId String
+  createdAt   DateTime @default(now())
+
+  @@unique([questionId, voterId])
+  @@index([questionId])
+  @@index([votedUserId])
+}
