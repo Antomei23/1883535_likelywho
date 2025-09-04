@@ -1,161 +1,39 @@
 version: "3.9"
 
 services:
-  postgres:
-      image: postgres:16
-      container_name: postgres
-      environment:
-        POSTGRES_USER: root
-        POSTGRES_PASSWORD: root
-        POSTGRES_DB: likelywho
-      ports:
-        - "5432:5432"                          # opzionale in dev
-      volumes:
-        - ./data/postgres:/var/lib/postgresql/data
-        - ./db/init:/docker-entrypoint-initdb.d:ro
-      networks: [app]
-
-    adminer:
-      image: adminer:4
-      container_name: adminer
-      ports:
-        - "8081:8080"
-      depends_on: [postgres]
-      networks: [app]
-
-networks:
-  app:
-    driver: bridge
-  gateway:
-    image: traefik:v3.1
-    container_name: gateway
-    command:
-      - "--providers.docker=true"
-      - "--entrypoints.web.address=:${WEB_PORT}"
-      - "--entrypoints.websecure.address=:${WEBSECURE_PORT}"
+  api-gateway:
+    build: ./api-gateway
     ports:
-      - "${WEB_PORT}:${WEB_PORT}"
-      - "${WEBSECURE_PORT}:${WEBSECURE_PORT}"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./gateway/traefik.yaml:/etc/traefik/traefik.yaml:ro
-      - ./gateway/dynamic:/etc/traefik/dynamic:ro
-    networks: [app]
+      - "3000:3000"
     depends_on:
-      - frontend
-      - auth-service
       - user-service
       - question-service
       - voting-service
       - notification-service
-      - database-service
-    labels:
-      - "traefik.enable=true"
-      # Dashboard (proteggilo in prod)
-      - "traefik.http.routers.dashboard.rule=Host(`${APP_HOST}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
-      - "traefik.http.routers.dashboard.service=api@internal"
-      - "traefik.http.routers.dashboard.entrypoints=web"
-
-  # ===== FRONTEND (Next.js) =====
-  frontend:
-    build:
-      context: ./frontend
-    container_name: frontend
-    environment:
-      # usato da Route Handlers/Server Actions per chiamare il gateway internamente
-      - API_BASE_URL=http://gateway:${WEB_PORT}
-      - NEXT_PUBLIC_API_PREFIX=${API_PREFIX}
-    networks: [app]
-    expose:
-      - "${FRONTEND_PORT}"
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.front.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.front.entrypoints=web"
-      - "traefik.http.services.front.loadbalancer.server.port=${FRONTEND_PORT}"
-      - "traefik.http.middlewares.front-chain.chain.middlewares=gzip-compress"
-      - "traefik.http.routers.front.middlewares=front-chain"
-
-  # ====== MICRO-SERVIZI (inserisci il tuo codice in ./services/...) ======
-
-  auth-service:
-    build:
-      context: ./services/auth-service
-    container_name: auth-service
-    expose: ["${AUTH_PORT}"]
-    networks: [app]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.auth.rule=PathPrefix(`${API_PREFIX}/auth`)"
-      - "traefik.http.routers.auth.entrypoints=web"
-      - "traefik.http.services.auth.loadbalancer.server.port=${AUTH_PORT}"
-      - "traefik.http.routers.auth.middlewares=cors-default,security-headers,rate-limit-soft"
 
   user-service:
-    build:
-      context: ./services/user-service
-    container_name: user-service
-    expose: ["${USER_PORT}"]
-    networks: [app]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.user.rule=PathPrefix(`${API_PREFIX}/users`)"
-      - "traefik.http.routers.user.entrypoints=web"
-      - "traefik.http.services.user.loadbalancer.server.port=${USER_PORT}"
-      - "traefik.http.routers.user.middlewares=cors-default,security-headers,rate-limit-soft"
+    build: ./user-service
+    ports:
+      - "3001:3001"
 
   question-service:
-    build:
-      context: ./services/question-service
-    container_name: question-service
-    expose: ["${QUESTION_PORT}"]
-    networks: [app]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.question.rule=PathPrefix(`${API_PREFIX}/questions`)"
-      - "traefik.http.routers.question.entrypoints=web"
-      - "traefik.http.services.question.loadbalancer.server.port=${QUESTION_PORT}"
-      - "traefik.http.routers.question.middlewares=cors-default,security-headers,rate-limit-soft"
+    build: ./question-service
+    ports:
+      - "3002:3002"
 
   voting-service:
-    build:
-      context: ./services/voting-service
-    container_name: voting-service
-    expose: ["${VOTING_PORT}"]
-    networks: [app]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.voting.rule=PathPrefix(`${API_PREFIX}/votes`)"
-      - "traefik.http.routers.voting.entrypoints=web"
-      - "traefik.http.services.voting.loadbalancer.server.port=${VOTING_PORT}"
-      - "traefik.http.routers.voting.middlewares=cors-default,security-headers,rate-limit-soft"
+    build: ./voting-service
+    ports:
+      - "3003:3003"
 
   notification-service:
-    build:
-      context: ./services/notification-service
-    container_name: notification-service
-    expose: ["${NOTIFY_PORT}"]
-    networks: [app]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.notify.rule=PathPrefix(`${API_PREFIX}/notifications`)"
-      - "traefik.http.routers.notify.entrypoints=web"
-      - "traefik.http.services.notify.loadbalancer.server.port=${NOTIFY_PORT}"
-      - "traefik.http.routers.notify.middlewares=cors-default,security-headers,rate-limit-soft"
+    build: ./notification-service
+    ports:
+      - "3004:3004"
 
-  database-service:
-    build:
-      context: ./services/database-service
-    container_name: database-service
-    expose: ["${DBSVC_PORT}"]
-    networks: [app]
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dbsvc.rule=PathPrefix(`${API_PREFIX}/db`)"
-      - "traefik.http.routers.dbsvc.entrypoints=web"
-      - "traefik.http.services.dbsvc.loadbalancer.server.port=${DBSVC_PORT}"
-      - "traefik.http.routers.dbsvc.middlewares=cors-default,security-headers,rate-limit-soft"
-
-networks:
-  app:
-    driver: bridge
+  frontend:
+    build: ./frontend
+    ports:
+      - "3005:3005"
+    depends_on:
+      - api-gateway
