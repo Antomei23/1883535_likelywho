@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
-
+import Image from "next/image";
 type Group = {
   id: string;
   name: string;
@@ -30,8 +30,34 @@ export default function HomePage() {
     <div style={styles.page}>
       {/* Top bar */}
       <div style={styles.topbar}>
-        <div style={styles.logo}>logo</div>
-        <button type="button" onClick={goProfile} style={styles.profileBtn} aria-label="Open profile" />
+        <div style={styles.logo}>
+  <Image 
+    src="/appiconexample.png" 
+    
+    alt="App Logo" 
+    width={42} 
+    height={42} 
+  />
+</div>
+
+       <button
+  type="button"
+  onClick={goProfile}
+  style={styles.profileBtn}
+  aria-label="Open profile"
+>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="22"
+    height="22"
+    fill="currentColor"
+    viewBox="0 0 24 24"
+  >
+    <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" />
+  </svg>
+</button>
+
+
       </div>
 
       {/* Title */}
@@ -96,15 +122,19 @@ const styles: { [k: string]: React.CSSProperties } = {
     fontSize: "22px",
     userSelect: "none",
   },
-  profileBtn: {
-    width: "36px",
-    height: "36px",
-    borderRadius: "50%",
-    border: "2px solid #000",
-    background:
-      "radial-gradient(circle at 50% 35%, #000 18%, transparent 19%), radial-gradient(circle at 50% 85%, #000 18%, transparent 19%), linear-gradient(#000 0 0) center/60% 18% no-repeat",
-    cursor: "pointer",
-  },
+profileBtn: {
+  width: "40px",
+  height: "40px",
+  borderRadius: "50%",
+  border: "1px solid #ccc",
+  background: "#fff",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: "20px",
+},
+
   heading: {
     fontSize: "24px",
     fontWeight: "bold",
