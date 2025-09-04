@@ -1,8 +1,9 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
+
 type Group = {
   id: string;
   name: string;
@@ -11,15 +12,15 @@ type Group = {
 
 export default function HomePage() {
   const router = useRouter();
+  const [groups, setGroups] = useState<Group[]>([]);
 
-  // Per ora mock; poi sostituiremo con fetch al backend
-  const groups: Group[] = useMemo(
-    () => [
-      { id: "1", name: "Group 1", hasNewQuestion: true },
-      { id: "2", name: "Group 2" },
-    ],
-    []
-  );
+  // 🔹 carico gruppi dal gateway
+  useEffect(() => {
+    fetch("http://localhost:8080/api/groups")
+      .then((res) => res.json())
+      .then((data) => setGroups(data))
+      .catch((err) => console.error("❌ Error fetching groups:", err));
+  }, []);
 
   const goToGroup = (id: string) => router.push(`/gruppo/${id}`);
   const goCreate = () => router.push("/crea-gruppo");
@@ -31,33 +32,30 @@ export default function HomePage() {
       {/* Top bar */}
       <div style={styles.topbar}>
         <div style={styles.logo}>
-  <Image 
-    src="/appiconexample.png" 
-    
-    alt="App Logo" 
-    width={42} 
-    height={42} 
-  />
-</div>
+          <Image
+            src="/appiconexample.png"
+            alt="App Logo"
+            width={42}
+            height={42}
+          />
+        </div>
 
-       <button
-  type="button"
-  onClick={goProfile}
-  style={styles.profileBtn}
-  aria-label="Open profile"
->
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    width="22"
-    height="22"
-    fill="currentColor"
-    viewBox="0 0 24 24"
-  >
-    <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" />
-  </svg>
-</button>
-
-
+        <button
+          type="button"
+          onClick={goProfile}
+          style={styles.profileBtn}
+          aria-label="Open profile"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="22"
+            height="22"
+            fill="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" />
+          </svg>
+        </button>
       </div>
 
       {/* Title */}
@@ -73,9 +71,7 @@ export default function HomePage() {
             aria-label={`Open ${g.name}`}
           >
             <span style={styles.groupName}>{g.name}</span>
-            {g.hasNewQuestion && (
-              <span style={styles.badge}>New</span>
-            )}
+            {g.hasNewQuestion && <span style={styles.badge}>New</span>}
           </button>
         ))}
       </div>
@@ -92,6 +88,7 @@ export default function HomePage() {
     </div>
   );
 }
+
 
 const styles: { [k: string]: React.CSSProperties } = {
   page: {
