@@ -1,15 +1,28 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { deleteAccount, getCurrentUserId } from "@/lib/api";
 
 export default function DeleteAccountPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
 
   const cancel = () => router.back();
-  const remove = () => {
-    // TODO: call API delete
-    console.log("Account removed");
-    router.push("/register"); // o /login, come preferisci
+  const remove = async () => {
+    if (!confirm("Are you sure you want to permanently delete your account?")) return;
+    setLoading(true);
+    const res = await deleteAccount(getCurrentUserId());
+    setLoading(false);
+    if ("ok" in res && res.ok) {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("token");
+        localStorage.removeItem("userId");
+      }
+      router.push("/register"); // or /login
+    } else {
+      alert((res as any).error ?? "Unable to delete account");
+    }
   };
 
   return (
@@ -26,9 +39,11 @@ export default function DeleteAccountPage() {
         </p>
 
         <div style={styles.actions}>
-          <button onClick={cancel} style={styles.cancelBtn}>Cancel</button>
-          <span style={{opacity:.5}}>|</span>
-          <button onClick={remove} style={styles.removeBtn}>Remove Account</button>
+          <button onClick={cancel} style={styles.cancelBtn} disabled={loading}>Cancel</button>
+          <span style={{ opacity: 0.5 }}>|</span>
+          <button onClick={remove} style={styles.removeBtn} disabled={loading}>
+            {loading ? "Removing..." : "Remove Account"}
+          </button>
         </div>
       </div>
     </div>
@@ -53,11 +68,21 @@ const styles: { [k: string]: React.CSSProperties } = {
     alignItems: "center",
   },
   backBtn: {
-    width: 36, height: 36, borderRadius: "50%", border: "1px solid #ccc",
-    background: "#fff", cursor: "pointer", fontSize: 20, lineHeight: "32px"
+    width: 36,
+    height: 36,
+    borderRadius: "50%",
+    border: "1px solid #ccc",
+    background: "#fff",
+    cursor: "pointer",
+    fontSize: 20,
+    lineHeight: "32px",
   },
   avatar: {
-    width: 50, height: 50, borderRadius: "50%", background: "#ddd", border: "2px solid #000",
+    width: 50,
+    height: 50,
+    borderRadius: "50%",
+    background: "#ddd",
+    border: "2px solid #000",
   },
   card: {
     marginTop: 10,

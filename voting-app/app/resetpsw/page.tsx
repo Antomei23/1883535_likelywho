@@ -1,37 +1,56 @@
 "use client";
 
 import { useState } from "react";
+import { resetPassword } from "@/lib/api";
 
-const ResetPasswordPage = () => {
+export default function ResetPasswordPage() {
   const [email, setEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
+  const [okMsg, setOkMsg] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const isStrongPassword = (password: string) => {
+    const strongPasswordRegex =
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    return strongPasswordRegex.test(password);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
+    setOkMsg("");
+
     if (newPassword !== confirmPassword) {
       setError("Passwords do not match");
       return;
     }
     if (!isStrongPassword(newPassword)) {
-      setError("Password must be at least 8 characters long, include an uppercase letter, a number, and a special character.");
+      setError(
+        "Password must be at least 8 characters, include an uppercase letter, a number and a special character."
+      );
       return;
     }
-    console.log("Password reset request for:", email);
-    // Add logic to handle password reset request
-  };
 
-  const isStrongPassword = (password: string) => {
-    const strongPasswordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    return strongPasswordRegex.test(password);
+    setLoading(true);
+    const res = await resetPassword(email, newPassword);
+    setLoading(false);
+
+    if ("ok" in res && res.ok) {
+      setOkMsg("If the email exists, the reset has been processed.");
+      setEmail("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } else {
+      setError((res as any).error ?? "Unable to reset password");
+    }
   };
 
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        {/* App Icon */}
-        <img src="/appiconexample.jpg" alt="App Icon" style={styles.icon} />
+        <img src="/appiconexample.png" alt="App Icon" style={styles.icon} />
         <h2 style={styles.title}>Reset Password</h2>
 
         <form onSubmit={handleSubmit} style={styles.form}>
@@ -53,7 +72,8 @@ const ResetPasswordPage = () => {
             style={styles.input}
           />
           <p style={styles.note}>
-            Password must be at least 8 characters long, include an uppercase letter, a number, and a special character.
+            Password must be at least 8 characters, include an uppercase letter,
+            a number, and a special character.
           </p>
 
           <label>Confirm Password:</label>
@@ -66,8 +86,11 @@ const ResetPasswordPage = () => {
           />
 
           {error && <p style={styles.error}>{error}</p>}
+          {okMsg && <p style={styles.ok}>{okMsg}</p>}
 
-          <button type="submit" style={styles.button}>Send Reset Link</button>
+          <button type="submit" style={styles.button} disabled={loading}>
+            {loading ? "Processing..." : "Send Reset"}
+          </button>
         </form>
 
         <p style={styles.text}>
@@ -76,9 +99,8 @@ const ResetPasswordPage = () => {
       </div>
     </div>
   );
-};
+}
 
-// styles 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
     display: "flex",
@@ -87,69 +109,37 @@ const styles: { [key: string]: React.CSSProperties } = {
     height: "100vh",
     background: "linear-gradient(135deg, #f5f7fa, #c3cfe2)",
   },
-  icon: {
-    width: "60px",
-    height: "60px",
-    marginBottom: "20px",
-  },
+  icon: { width: 60, height: 60, marginBottom: 20 },
   card: {
     backgroundColor: "white",
-    padding: "30px",
-    borderRadius: "12px",
-    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.1)",
+    padding: 30,
+    borderRadius: 12,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
     textAlign: "center",
-    width: "350px",
+    width: 350,
     transition: "transform 0.3s",
   },
-  title: {
-    marginBottom: "25px",
-    fontSize: "24px",
-    fontWeight: "bold",
-    color: "#333",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "15px",
-  },
+  title: { marginBottom: 25, fontSize: 24, fontWeight: "bold", color: "#333" },
+  form: { display: "flex", flexDirection: "column", gap: 15 },
   input: {
-    padding: "10px",
-    fontSize: "15px",
-    borderRadius: "6px",
+    padding: 10,
+    fontSize: 15,
+    borderRadius: 6,
     border: "1px solid #ddd",
-    transition: "border-color 0.3s",
   },
-  note: {
-    fontSize: "12px",
-    color: "#555",
-    marginTop: "-8px",
-    marginBottom: "10px",
-  },
-  link: {
-    color: "#007bff",
-    textDecoration: "none",
-    transition: "color 0.3s",
-  },
+  note: { fontSize: 12, color: "#555", marginTop: -8, marginBottom: 10 },
+  link: { color: "#007bff", textDecoration: "none" },
   button: {
     backgroundColor: "#007bff",
     color: "white",
-    padding: "12px",
-    fontSize: "17px",
+    padding: 12,
+    fontSize: 17,
     border: "none",
-    borderRadius: "6px",
+    borderRadius: 6,
     cursor: "pointer",
-    marginTop: "15px",
-    transition: "background-color 0.3s, transform 0.3s",
+    marginTop: 15,
   },
-  text: {
-    marginTop: "20px",
-    fontSize: "15px",
-    color: "#555",
-  },
-  error: {
-    color: "red",
-    fontSize: "12px",
-  },
+  text: { marginTop: 20, fontSize: 15, color: "#555" },
+  error: { color: "red", fontSize: 12 },
+  ok: { color: "green", fontSize: 12 },
 };
-
-export default ResetPasswordPage;

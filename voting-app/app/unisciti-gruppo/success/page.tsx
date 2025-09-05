@@ -16,12 +16,7 @@ export default function SuccessPage() {
       padding: '20px',
       textAlign: 'center',
     },
-    message: {
-      fontSize: '24px',
-      fontWeight: 'bold',
-      color: '#333',
-      marginBottom: '30px',
-    },
+    message: { fontSize: '24px', fontWeight: 'bold', color: '#333', marginBottom: '30px' },
     button: {
       padding: '12px 24px',
       fontSize: '16px',
