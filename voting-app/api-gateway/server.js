@@ -12,9 +12,60 @@ app.use(express.json());
 function makeId(prefix = "g") {
   return `${prefix}${Math.floor(Math.random() * 1e9).toString(36)}`;
 }
+function makeUserId() {
+  return `u${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
 
 // -----------------------------
-// MOCK DATA (sviluppo)
+// MOCK USERS (Auth/User-Service)
+// -----------------------------
+const mockUsers = {
+  // utente di esempio già presente (puoi fare login con questa coppia)
+  "u7": { id: "u7", username: "Riccardo", email: "ric@example.com", password: "pass123" },
+};
+
+// Auth: REGISTER
+app.post("/api/auth/register", (req, res) => {
+  const { username, email, password } = req.body || {};
+  if (!username || !email || !password) {
+    return res.status(400).json({ ok: false, error: "Missing fields" });
+  }
+  const exists = Object.values(mockUsers).some((u) => u.email === email);
+  if (exists) {
+    return res.status(409).json({ ok: false, error: "Email already used" });
+  }
+
+  const id = makeUserId();
+  const user = { id, username, email, password };
+  mockUsers[id] = user;
+  console.log(`[MOCK] user registered ${id} (${email})`);
+  return res.status(201).json({ ok: true, user: { id, username, email } });
+});
+
+// Auth: LOGIN
+app.post("/api/auth/login", (req, res) => {
+  const { email, password } = req.body || {};
+  if (!email || !password) {
+    return res.status(400).json({ ok: false, error: "Missing fields" });
+  }
+
+  const user = Object.values(mockUsers).find(
+    (u) => u.email === email && u.password === password
+  );
+  if (!user) {
+    return res.status(401).json({ ok: false, error: "Invalid credentials" });
+  }
+
+  const token = `mock-token-${user.id}-${Date.now()}`;
+  return res.json({
+    ok: true,
+    user: { id: user.id, username: user.username, email: user.email },
+    token,
+  });
+});
+
+// -----------------------------
+// MOCK DATA (sviluppo) - GROUPS & QUESTIONS
 // -----------------------------
 const mockGroups = {
   g1: {

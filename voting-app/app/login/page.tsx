@@ -1,14 +1,52 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 const LoginPage = () => {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [remember, setRemember] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Logging in with:", { email, password });
+    setError(null);
+
+    try {
+      setSubmitting(true);
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as {
+        ok: boolean;
+        user?: { id: string; username?: string; email: string };
+        token?: string;
+        tokens?: { access?: string; refresh?: string };
+      };
+      if (!data?.ok) throw new Error("Login failed");
+
+      // salva sessione
+      const storage = remember ? localStorage : sessionStorage;
+      const accessToken = data.token ?? data.tokens?.access ?? "mock-access-token";
+      storage.setItem("accessToken", accessToken);
+      if (data.user) storage.setItem("currentUser", JSON.stringify(data.user));
+
+      // vai alla home
+      router.replace("/home");
+    } catch (err) {
+      console.error(err);
+      setError("Credenziali non valide o servizio non disponibile.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -39,12 +77,23 @@ const LoginPage = () => {
           />
 
           <div style={styles.rememberForgot}>
-            <input type="checkbox" id="rememberMe" />
-            <label htmlFor="rememberMe"> Remember me</label>
+            <span>
+              <input
+                type="checkbox"
+                id="rememberMe"
+                checked={remember}
+                onChange={() => setRemember(!remember)}
+              />
+              <label htmlFor="rememberMe"> Remember me</label>
+            </span>
             <a href="/resetpsw" style={styles.link}>Forgot password?</a>
           </div>
 
-          <button type="submit" style={styles.button}>Sign In</button>
+          {error && <div style={styles.error}>{error}</div>}
+
+          <button type="submit" disabled={submitting} style={{ ...styles.button, opacity: submitting ? .7 : 1 }}>
+            {submitting ? "Signing in…" : "Sign In"}
+          </button>
         </form>
 
         <p style={styles.text}>
@@ -58,73 +107,29 @@ const LoginPage = () => {
 // styles 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
-    height: "100vh",
-    background: "linear-gradient(135deg, #f5f7fa, #c3cfe2)",
+    display: "flex", justifyContent: "center", alignItems: "center",
+    height: "100vh", background: "linear-gradient(135deg, #f5f7fa, #c3cfe2)",
   },
-  icon: {
-    width: "60px",
-    height: "60px",
-    marginBottom: "20px",
-  },
+  icon: { width: "60px", height: "60px", marginBottom: "20px" },
   card: {
-    backgroundColor: "white",
-    padding: "30px",
-    borderRadius: "12px",
-    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.1)",
-    textAlign: "center",
-    width: "350px",
-    transition: "transform 0.3s",
+    backgroundColor: "white", padding: "30px", borderRadius: "12px",
+    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.1)", textAlign: "center", width: "350px",
   },
-  title: {
-    marginBottom: "25px",
-    fontSize: "24px",
-    fontWeight: "bold",
-    color: "#333",
-  },
-  form: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "15px",
-  },
+  title: { marginBottom: "25px", fontSize: "24px", fontWeight: "bold", color: "#333" },
+  form: { display: "flex", flexDirection: "column", gap: "15px" },
   input: {
-    padding: "10px",
-    fontSize: "15px",
-    borderRadius: "6px",
-    border: "1px solid #ddd",
-    transition: "border-color 0.3s",
+    padding: "10px", fontSize: "15px", borderRadius: "6px", border: "1px solid #ddd",
   },
-  rememberForgot: {
-    display: "flex",
-    justifyContent: "space-between",
-    fontSize: "13px",
-  },
-  link: {
-    color: "#007bff",
-    textDecoration: "none",
-    transition: "color 0.3s",
-  },
+  rememberForgot: { display: "flex", justifyContent: "space-between", fontSize: "13px" },
+  link: { color: "#007bff", textDecoration: "none" },
   button: {
-    backgroundColor: "#007bff",
-    color: "white",
-    padding: "12px",
-    fontSize: "17px",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    marginTop: "15px",
-    transition: "background-color 0.3s, transform 0.3s",
+    backgroundColor: "#007bff", color: "white", padding: "12px", fontSize: "17px",
+    border: "none", borderRadius: "6px", cursor: "pointer", marginTop: "15px",
   },
-  text: {
-    marginTop: "20px",
-    fontSize: "15px",
-    color: "#555",
-  },
+  text: { marginTop: "20px", fontSize: "15px", color: "#555" },
   error: {
-    color: "red",
-    fontSize: "12px",
+    marginTop: 6, background: "#ffecec", color: "#7a0b0b",
+    border: "1px solid #f7c2c2", padding: 8, borderRadius: 6, fontSize: 13,
   },
 };
 
