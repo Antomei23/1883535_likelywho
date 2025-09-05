@@ -1,25 +1,37 @@
 "use client";
 
-import React, { use as usePromise } from "react";
+import React, { use as usePromise, useEffect, useState } from "react";
 import Link from "next/link";
+import { getLeaderboard, LeaderboardEntry } from "@/lib/api";
 
 type Params = { id: string };
 
-const PARTIAL = [
-  { name: "Sara", value: 55 },
-  { name: "Mattia", value: 20 },
-  { name: "Andrea", value: 5 },
-  { name: "Antonio", value: 5 },
-  { name: "Simona", value: 5 },
-  { name: "Lucia", value: 5 },
-  { name: "Mario", value: 3 },
-  { name: "Sandra", value: 2 },
-];
-
-const WHO_VOTED = ["Andrea", "Sara", "Simona", "Antonio", "Lucia", "Mario", "Sandra"];
-
 export default function StatsPage({ params }: { params: Promise<Params> }) {
   const { id } = usePromise(params);
+
+  const [questionText, setQuestionText] = useState<string>("Loading…");
+  const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [whoVoted, setWhoVoted] = useState<string[]>([]);
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const data = await getLeaderboard(id);
+        if (!live) return;
+        setQuestionText(data.questionText);
+        setWhoVoted(data.voted);
+        setEntries(data.entries);
+      } catch (e) {
+        console.error(e);
+        setQuestionText("Failed to load leaderboard");
+      }
+    })();
+    return () => { live = false; };
+  }, [id]);
+
+  // calcolo % semplice per la barra (normalizzo sui punti massimi)
+  const maxPoints = entries.reduce((m, e) => Math.max(m, e.points), 1);
 
   return (
     <div style={styles.page}>
@@ -31,23 +43,26 @@ export default function StatsPage({ params }: { params: Promise<Params> }) {
 
       <div style={styles.content}>
         <div style={styles.card}>
-          <h2 style={styles.h2}>Who is most likely to win a swimming competition?</h2>
+          <h2 style={styles.h2}>{questionText}</h2>
 
           <ul style={{ listStyle: "none", padding: 0, marginTop: 12, display: "grid", gap: 10 }}>
-            {PARTIAL.map((p) => (
-              <li key={p.name} style={{ display: "grid", gridTemplateColumns: "110px 1fr 52px", alignItems: "center", gap: 10 }}>
-                <span style={{ fontWeight: 600 }}>{p.name}</span>
-                <div style={styles.barBg}>
-                  <div style={{ ...styles.barFill, width: `${p.value}%` }} />
-                </div>
-                <span style={{ textAlign: "right" }}>{p.value}%</span>
-              </li>
-            ))}
+            {entries.map((p) => {
+              const pct = Math.round((p.points / maxPoints) * 100);
+              return (
+                <li key={p.userId} style={{ display: "grid", gridTemplateColumns: "110px 1fr 52px", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontWeight: 600 }}>{p.name}</span>
+                  <div style={styles.barBg}>
+                    <div style={{ ...styles.barFill, width: `${pct}%` }} />
+                  </div>
+                  <span style={{ textAlign: "right" }}>{p.points}</span>
+                </li>
+              );
+            })}
           </ul>
 
           <div style={{ marginTop: 16, fontSize: 14, color: "#555" }}>
             <div style={{ marginBottom: 6 }}>Who has already voted?</div>
-            <div>{WHO_VOTED.join(", ")}</div>
+            <div>{whoVoted.join(", ") || "—"}</div>
           </div>
         </div>
       </div>
@@ -57,10 +72,7 @@ export default function StatsPage({ params }: { params: Promise<Params> }) {
 
 const styles: { [k: string]: React.CSSProperties } = {
   page: { fontFamily: "Inter, sans-serif", backgroundColor: "#f5f6f8", minHeight: "100vh", color: "#333" },
-  header: {
-    display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "16px 24px", backgroundColor: "#fff", boxShadow: "0 4px 6px rgba(0,0,0,.1)", position: "sticky", top: 0, zIndex: 10,
-  },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", backgroundColor: "#fff", boxShadow: "0 4px 6px rgba(0,0,0,.1)", position: "sticky", top: 0, zIndex: 10 },
   menuButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   userButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   content: { padding: 24, maxWidth: 420, margin: "0 auto" },

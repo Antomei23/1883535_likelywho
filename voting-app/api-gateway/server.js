@@ -1,28 +1,173 @@
+// voting-app/api-gateway/server.js
 const express = require("express");
-const { createProxyMiddleware } = require("http-proxy-middleware");
 const cors = require("cors");
-
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔹 Mock routes (per testare subito il frontend)
+// ==== MOCK DATA (riutilizza/integra i tuoi) ====
+const mockGroups = {
+  g1: {
+    id: "g1",
+    name: "FunGroup",
+    leader: { id: "u1", name: "Mario" },
+    members: [
+      { id: "u1", name: "Mario" },
+      { id: "u2", name: "Eva" },
+      { id: "u7", name: "Riccardo" },
+      { id: "u8", name: "Sandra" },
+    ],
+    points: { u1: 3, u2: 5, u7: 2, u8: 1 }, // leaderboard mock
+  },
+  // Aggiunti per popolare la home con 3 gruppi
+  g2: {
+    id: "g2",
+    name: "Weekend Warriors",
+    leader: { id: "u9", name: "Luca" },
+    members: [
+      { id: "u9", name: "Luca" },
+      { id: "u10", name: "Giulia" },
+      { id: "u11", name: "Paolo" },
+    ],
+    points: { u9: 1, u10: 2, u11: 0 },
+  },
+  g3: {
+    id: "g3",
+    name: "Office Legends",
+    leader: { id: "u12", name: "Sara" },
+    members: [
+      { id: "u12", name: "Sara" },
+      { id: "u13", name: "Enzo" },
+    ],
+    points: { u12: 4, u13: 4 },
+  },
+};
+
+let mockQuestions = {
+  g1: {
+    id: "q99",
+    text: "Who is most likely to win a swimming competition?",
+    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    deadline: new Date(Date.now() + 1000 * 60 * 60 * 23).toISOString(),
+    answeredBy: new Set(), // userIds che hanno votato
+    votedLog: [], // {voterId, votedUserId}
+  },
+  // g2/g3 per ora senza domanda attiva
+};
+
+// ====== LISTA GRUPPI ======
 app.get("/api/groups", (req, res) => {
-  res.json([
-    { id: 1, name: "Group 1", members: 5 },
-    { id: 2, name: "Group 2", members: 3 },
-    { id: 3, name: "Gruppo di esempio", members: 3 },
-  ]);
+  // restituisci una lista semplice {id, name}
+  const arr = Object.values(mockGroups).map((g) => ({ id: g.id, name: g.name }));
+  res.json(arr);
 });
 
-app.post("/api/groups", (req, res) => {
-  res.json({ success: true, created: req.body });
+// ====== Groups ======
+app.get("/api/groups/:groupId", (req, res) => {
+  const g = mockGroups[req.params.groupId];
+  if (!g) return res.status(404).json({ error: "Group not found" });
+  res.json(g);
 });
 
-// 🔹 Quando avrai i microservizi veri, aggiungi proxy
-// esempio:
-// app.use("/api/users", createProxyMiddleware({ target: "http://users:4001", changeOrigin: true }));
-// app.use("/api/votes", createProxyMiddleware({ target: "http://votes:4002", changeOrigin: true }));
+app.get("/api/groups/:groupId/members", (req, res) => {
+  const g = mockGroups[req.params.groupId];
+  if (!g) return res.status(404).json({ error: "Group not found" });
+  res.json({ members: g.members });
+});
+
+// Invite
+app.post("/api/groups/:groupId/invite", (req, res) => {
+  const { groupId } = req.params;
+  const { userIds = [], emails = [] } = req.body || {};
+  console.log(`[MOCK] invite to group ${groupId}: userIds=${userIds.join(",")} emails=${emails.join(",")}`);
+  // In un microservizio reale: crea/invia inviti e aggiungi i nuovi membri (pending/accepted)
+  res.json({ ok: true });
+});
+
+// ====== Questions ======
+app.get("/api/groups/:groupId/pending-question", (req, res) => {
+  const { groupId } = req.params;
+  const { userId } = req.query;
+  const q = mockQuestions[groupId];
+  if (!q) return res.json({ hasPending: false });
+
+  const expired = new Date(q.deadline).getTime() < Date.now();
+  const hasAnswered = q.answeredBy.has(userId);
+  const hasPending = !expired && !hasAnswered;
+
+  // Nota: non inviamo strutture non-serializzabili (Set)
+  const safe = q && hasPending
+    ? {
+        id: q.id,
+        text: q.text,
+        createdAt: q.createdAt,
+        deadline: q.deadline,
+      }
+    : undefined;
+
+  res.json({ hasPending, question: safe });
+});
+
+app.post("/api/questions", (req, res) => {
+  const { groupId, text, expiresInHours = 24 } = req.body || {};
+  if (!groupId || !text) return res.status(400).json({ ok: false, error: "Missing fields" });
+
+  // crea nuova domanda per il gruppo
+  const qid = `q${Math.floor(Math.random() * 100000)}`;
+  mockQuestions[groupId] = {
+    id: qid,
+    text,
+    createdAt: new Date().toISOString(),
+    deadline: new Date(Date.now() + expiresInHours * 3600 * 1000).toISOString(),
+    answeredBy: new Set(),
+    votedLog: [],
+  };
+  console.log(`[MOCK] new question ${qid} for ${groupId}: "${text}"`);
+  res.json({ ok: true, questionId: qid });
+});
+
+// ====== Votes / Leaderboard ======
+app.post("/api/votes", (req, res) => {
+  const { groupId, questionId, voterId, votedUserId } = req.body;
+  const q = mockQuestions[groupId];
+  const g = mockGroups[groupId];
+  if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
+  if (!q || q.id !== questionId) return res.status(400).json({ ok: false, error: "Question not found" });
+
+  // salva voto
+  q.answeredBy.add(voterId);
+  q.votedLog.push({ voterId, votedUserId });
+  // aggiorna punteggi
+  g.points[votedUserId] = (g.points[votedUserId] ?? 0) + 1;
+  console.log(`[MOCK] +1 punto a ${votedUserId} nel gruppo ${groupId} (da ${voterId})`);
+
+  res.json({ ok: true });
+});
+
+app.get("/api/groups/:groupId/leaderboard", (req, res) => {
+  const { groupId } = req.params;
+  const g = mockGroups[groupId];
+  const q = mockQuestions[groupId];
+  if (!g) return res.status(404).json({ error: "Group not found" });
+
+  const entries = Object.entries(g.points)
+    .map(([userId, points]) => {
+      const m = g.members.find((x) => x.id === userId);
+      return { userId, name: m?.name ?? userId, points: Number(points) };
+    })
+    .sort((a, b) => b.points - a.points);
+
+  const votedNames = (q?.votedLog ?? []).map((v) => {
+    const m = g.members.find((x) => x.id === v.voterId);
+    return m?.name ?? v.voterId;
+  });
+
+  res.json({
+    questionText: q?.text ?? "No active question",
+    voted: votedNames,
+    entries,
+  });
+});
 
 const PORT = 8080;
 app.listen(PORT, () => {

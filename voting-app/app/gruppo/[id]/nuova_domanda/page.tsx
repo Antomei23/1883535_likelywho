@@ -1,77 +1,110 @@
 "use client";
 
-import React, { use as usePromise } from "react";
+import React, { use as usePromise, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createQuestion } from "@/lib/api";
 
 type Params = { id: string };
 
-export default function GroupPage({ params }: { params: Promise<Params> }) {
+export default function NewQuestionPage({ params }: { params: Promise<Params> }) {
   const { id } = usePromise(params);
+  const router = useRouter();
 
-  // mock: elenco membri del gruppo (potresti caricarli dal backend)
-  const members = [
-    { id: "u1", name: "Sara" },
-    { id: "u2", name: "Mattia" },
-    { id: "u3", name: "Simona" },
-    { id: "u4", name: "Andrea" },
-    { id: "u5", name: "Antonio" },
-    { id: "u6", name: "Lucia" },
-    { id: "u7", name: "Mario" },
-    { id: "u8", name: "Sandra" },
-  ];
+  const [text, setText] = useState("");
+  const [hours, setHours] = useState(24);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    const q = text.trim();
+    if (!q) return setError("Inserisci un testo per la domanda.");
+    setError(null);
+
+    try {
+      setSubmitting(true);
+      await createQuestion({ groupId: id, text: q, expiresInHours: hours });
+      // Torna alla pagina del gruppo appena creata la domanda
+      router.replace(`/gruppo/${id}`);
+    } catch (e: any) {
+      console.error(e);
+      setError("Errore nella creazione della domanda. Riprova.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div style={styles.page}>
-      <header style={styles.header}>
-        <Link href="/home" style={styles.back}>&larr; Back</Link>
-        <div style={{ fontSize: 22 }}>👥 Group {id}</div>
-      </header>
+      {/* Header */}
+      <div style={styles.header}>
+        <Link href={`/gruppo/${id}`} style={styles.menuButton}>←</Link>
+        <div />
+        <Link href="/profile" style={styles.userButton}>👤</Link>
+      </div>
 
-      <main style={styles.content}>
-        <section style={styles.card}>
-          <h2 style={styles.h2}>Members</h2>
-          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 8 }}>
-            {members.map((m) => (
-              <li key={m.id} style={styles.memberPill}>{m.name}</li>
-            ))}
-          </ul>
-        </section>
+      {/* Content */}
+      <div style={styles.content}>
+        <div style={styles.card}>
+          <h2 style={styles.h2}>Crea una nuova domanda</h2>
 
-        <section style={styles.card}>
-          <h2 style={styles.h2}>Current Question</h2>
-          <p style={{ marginTop: 8 }}>
-            <strong>Who is most likely to win a swimming competition?</strong>
-          </p>
-          <div style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
-            {/* In un’app reale passeresti gli ID reali; qui usiamo questionId="current" */}
-            <Link
-              href={`/voting/${id}/current?selfVoting=false&currentUserId=u7`} // u7 = Mario
-              style={styles.btnPrimary}
-            >
-              ▶ Play
-            </Link>
+          <label style={styles.label}>Testo della domanda</label>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder='Es.: "Chi tra noi finirà per primo la bottiglia di vino?"'
+            style={styles.textarea}
+          />
 
-            <Link
-              href={`/voting/${id}/current?selfVoting=true&currentUserId=u7`}
-              style={styles.btnSecondary}
-            >
-              ▶ Play (self-vote enabled)
-            </Link>
+          <label style={{ ...styles.label, marginTop: 12 }}>Scadenza (ore)</label>
+          <input
+            type="number"
+            min={1}
+            max={48}
+            value={hours}
+            onChange={(e) => setHours(parseInt(e.target.value || "24", 10))}
+            style={styles.number}
+          />
+
+          {error && <div style={styles.error}>{error}</div>}
+
+          <button
+            onClick={handleCreate}
+            disabled={!text.trim() || submitting}
+            style={{
+              ...styles.btnPrimary,
+              width: "100%",
+              marginTop: 16,
+              opacity: !text.trim() || submitting ? 0.65 : 1,
+              cursor: !text.trim() || submitting ? "not-allowed" : "pointer",
+            }}
+          >
+            {submitting ? "Creazione in corso…" : "Crea domanda"}
+          </button>
+
+          <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+            <Link href={`/gruppo/${id}`} style={styles.btnSecondary}>Annulla</Link>
+            <Link href={`/gruppo/${id}/stats`} style={styles.btnSecondary}>Vai alle stats</Link>
           </div>
-        </section>
-      </main>
+        </div>
+      </div>
     </div>
   );
 }
 
 const styles: { [k: string]: React.CSSProperties } = {
-  page: { minHeight: "100vh", background: "#f5f6f8", fontFamily: "Inter, system-ui, sans-serif" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", background: "#fff", boxShadow: "0 2px 10px rgba(0,0,0,.06)" },
-  back: { textDecoration: "none", color: "#0070f3" },
-  content: { maxWidth: 900, margin: "24px auto", padding: "0 16px", display: "grid", gap: 16 },
-  card: { background: "#fff", borderRadius: 12, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,.05)" },
-  h2: { margin: 0, fontSize: 18 },
-  memberPill: { background: "#edf2ff", color: "#1f3b8f", padding: "10px 12px", borderRadius: 10, textAlign: "center" },
-  btnPrimary: { background: "#1f9d55", color: "#fff", padding: "12px 18px", borderRadius: 10, textDecoration: "none", fontWeight: 600 },
-  btnSecondary: { background: "#0a66c2", color: "#fff", padding: "12px 18px", borderRadius: 10, textDecoration: "none", fontWeight: 600 },
+  page: { fontFamily: "Inter, sans-serif", backgroundColor: "#f5f6f8", minHeight: "100vh", color: "#333" },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "16px 24px", backgroundColor: "#fff", boxShadow: "0 4px 6px rgba(0,0,0,.1)", position: "sticky", top: 0, zIndex: 10 },
+  menuButton: { fontSize: 22, textDecoration: "none", color: "#333" },
+  userButton: { fontSize: 22, textDecoration: "none", color: "#333" },
+  content: { padding: 24, maxWidth: 520, margin: "0 auto" },
+  card: { backgroundColor: "#fff", padding: 16, borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,.05)" },
+  h2: { margin: 0, fontSize: 20 },
+  label: { fontSize: 12, textTransform: "uppercase", letterSpacing: .4, color: "#6b7280", display: "block", marginTop: 8 },
+  textarea: { width: "100%", height: 120, marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" },
+  number: { width: 120, marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" },
+  btnPrimary: { backgroundColor: "#4CAF50", color: "#fff", padding: "12px 18px", borderRadius: 8, textDecoration: "none", fontWeight: 700, border: "none" },
+  btnSecondary: { backgroundColor: "#007bff", color: "#fff", padding: "10px 14px", borderRadius: 8, textDecoration: "none", fontWeight: 700 },
+  error: { marginTop: 10, color: "#b00020", fontSize: 14 },
 };

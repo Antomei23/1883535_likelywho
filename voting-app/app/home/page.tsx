@@ -10,16 +10,66 @@ type Group = {
   hasNewQuestion?: boolean;
 };
 
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+
+const CURRENT_USER_ID = "u7"; // TODO: prendi da auth quando disponibile
+
 export default function HomePage() {
   const router = useRouter();
   const [groups, setGroups] = useState<Group[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // 🔹 carico gruppi dal gateway
+  // carico gruppi dal gateway
   useEffect(() => {
-    fetch("http://localhost:8080/api/groups")
-      .then((res) => res.json())
-      .then((data) => setGroups(data))
-      .catch((err) => console.error("❌ Error fetching groups:", err));
+    let active = true;
+
+    async function load() {
+      try {
+        setError(null);
+        setLoading(true);
+
+        const res = await fetch(`${API_BASE}/api/groups`, { cache: "no-store" });
+        if (!res.ok) throw new Error(await res.text());
+
+        const raw = await res.json();
+        // supporta sia [{...}] che {groups:[...]}
+        const list: Group[] = Array.isArray(raw) ? raw : raw?.groups ?? [];
+
+        // Se il gateway non fornisce "hasNewQuestion", possiamo calcolarlo
+        // interrogando /pending-question per ciascun gruppo (ok in dev, pochi gruppi).
+        const withFlags = await Promise.all(
+          list.map(async (g) => {
+            try {
+              const r = await fetch(
+                `${API_BASE}/api/groups/${g.id}/pending-question?userId=${encodeURIComponent(
+                  CURRENT_USER_ID
+                )}`,
+                { cache: "no-store" }
+              );
+              if (!r.ok) return g;
+              const data = await r.json();
+              return { ...g, hasNewQuestion: !!data?.hasPending };
+            } catch {
+              return g;
+            }
+          })
+        );
+
+        if (active) setGroups(withFlags);
+      } catch (e: any) {
+        console.error("❌ Error fetching groups:", e);
+        if (active) setError("Impossibile caricare i gruppi dal Gateway.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      active = false;
+    };
   }, []);
 
   const goToGroup = (id: string) => router.push(`/gruppo/${id}`);
@@ -61,20 +111,36 @@ export default function HomePage() {
       {/* Title */}
       <h1 style={styles.heading}>My groups</h1>
 
+      {/* Error / Loading */}
+      {error && (
+        <div style={styles.errorBox}>{error}</div>
+      )}
+      {loading && !error && (
+        <div style={styles.loadingBox}>Loading groups…</div>
+      )}
+
       {/* Groups list */}
-      <div style={styles.groupList}>
-        {groups.map((g) => (
-          <button
-            key={g.id}
-            style={styles.groupItem}
-            onClick={() => goToGroup(g.id)}
-            aria-label={`Open ${g.name}`}
-          >
-            <span style={styles.groupName}>{g.name}</span>
-            {g.hasNewQuestion && <span style={styles.badge}>New</span>}
-          </button>
-        ))}
-      </div>
+      {!loading && !error && (
+        <div style={styles.groupList}>
+          {groups.map((g) => (
+            <button
+              key={g.id}
+              style={styles.groupItem}
+              onClick={() => goToGroup(g.id)}
+              aria-label={`Open ${g.name}`}
+            >
+              <span style={styles.groupName}>{g.name}</span>
+              {g.hasNewQuestion && <span style={styles.badge}>New</span>}
+            </button>
+          ))}
+
+          {!groups.length && (
+            <div style={{ color: "#666", textAlign: "center", padding: "8px" }}>
+              Nessun gruppo trovato.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Actions */}
       <div style={styles.actions}>
@@ -88,7 +154,6 @@ export default function HomePage() {
     </div>
   );
 }
-
 
 const styles: { [k: string]: React.CSSProperties } = {
   page: {
@@ -119,24 +184,42 @@ const styles: { [k: string]: React.CSSProperties } = {
     fontSize: "22px",
     userSelect: "none",
   },
-profileBtn: {
-  width: "40px",
-  height: "40px",
-  borderRadius: "50%",
-  border: "1px solid #ccc",
-  background: "#fff",
-  cursor: "pointer",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: "20px",
-},
+  profileBtn: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    border: "1px solid #ccc",
+    background: "#fff",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "20px",
+  },
 
   heading: {
     fontSize: "24px",
     fontWeight: "bold",
     textAlign: "left",
     marginTop: "4px",
+  },
+  errorBox: {
+    background: "#ffecec",
+    color: "#7a0b0b",
+    border: "1px solid #f7c2c2",
+    padding: "10px",
+    borderRadius: "8px",
+    maxWidth: 600,
+    margin: "0 auto",
+  },
+  loadingBox: {
+    background: "#fff",
+    color: "#333",
+    border: "1px solid #eee",
+    padding: "10px",
+    borderRadius: "8px",
+    maxWidth: 600,
+    margin: "0 auto",
   },
   groupList: {
     display: "flex",

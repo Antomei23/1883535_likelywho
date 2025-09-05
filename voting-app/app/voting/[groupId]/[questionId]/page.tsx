@@ -1,8 +1,10 @@
+// voting-app/frontend/app/voting/[groupId]/[questionId]/page.tsx
 "use client";
 
-import React, { useState, useMemo, use as usePromise } from "react";
+import React, { useState, useMemo, use as usePromise, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { getGroupMembers, getPendingQuestion, sendVote, Member } from "@/lib/api";
 
 type Params = { groupId: string; questionId: string };
 
@@ -18,35 +20,62 @@ export default function VotingPage({
   params: Promise<Params>;
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
-  const { groupId } = usePromise(params);
+  const { groupId, questionId } = usePromise(params);
   const router = useRouter();
 
-  // Mock dati
-  const members = [
-    { id: "u1", name: "Sara" },
-    { id: "u2", name: "Mattia" },
-    { id: "u3", name: "Simona" },
-    { id: "u4", name: "Andrea" },
-    { id: "u5", name: "Antonio" },
-    { id: "u6", name: "Lucia" },
-    { id: "u7", name: "Mario" },
-    { id: "u8", name: "Sandra" },
-  ];
-
+  // Recupero preferenze da query
   const selfVoting = (searchParams?.selfVoting as string) === "true";
   const currentUserId = (searchParams?.currentUserId as string) ?? "u7";
 
-  const createdAt = useMemo(() => new Date(Date.now() - 1000 * 60 * 30), []);
-  const deadline = useMemo(() => new Date(createdAt.getTime() + 24 * 60 * 60 * 1000), [createdAt]);
-
+  const [members, setMembers] = useState<Member[]>([]);
+  const [questionText, setQuestionText] = useState<string>("Loading question…");
+  const [deadline, setDeadline] = useState<Date | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      try {
+        const [m, pq] = await Promise.all([
+          getGroupMembers(groupId),
+          getPendingQuestion(groupId, currentUserId),
+        ]);
+        if (!active) return;
+
+        setMembers(m);
+        if (pq.hasPending && pq.question && pq.question.id === questionId) {
+          setQuestionText(pq.question.text);
+          setDeadline(new Date(pq.question.deadline));
+        } else {
+          setQuestionText("No active question or already answered.");
+        }
+      } catch (e) {
+        console.error(e);
+        setQuestionText("Failed to load question.");
+      }
+    })();
+    return () => { active = false; };
+  }, [groupId, questionId, currentUserId]);
 
   const disabledIfSelf = (id: string) => !selfVoting && id === currentUserId;
 
-  const handleConfirm = () => {
-    // qui invieresti il voto al backend; ora simuliamo e reindirizziamo alle stats
-    router.replace(`/gruppo/${groupId}/stats`);
+  const handleConfirm = async () => {
+    if (!selected) return;
+    try {
+      setSubmitting(true);
+      await sendVote({ groupId, questionId, voterId: currentUserId, votedUserId: selected });
+      // Dopo il voto: vai alle stats del gruppo
+      router.replace(`/gruppo/${groupId}/stats`);
+    } catch (e) {
+      console.error(e);
+      alert("Errore nell'invio del voto");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const remainHours = deadline ? hoursLeft(deadline) : undefined;
 
   return (
     <div style={styles.page}>
@@ -58,10 +87,12 @@ export default function VotingPage({
 
       <div style={styles.content}>
         <div style={styles.card}>
-          <h2 style={styles.h2}>Who is most likely to win a swimming competition?</h2>
-          <p style={{ color: "#666", marginTop: 6 }}>
-            This question will expire in <strong>{hoursLeft(deadline)}h</strong> ⏳
-          </p>
+          <h2 style={styles.h2}>{questionText}</h2>
+          {deadline && (
+            <p style={{ color: "#666", marginTop: 6 }}>
+              This question will expire in <strong>{remainHours}h</strong> ⏳
+            </p>
+          )}
 
           <div style={styles.grid}>
             {members.map((m) => {
@@ -86,14 +117,15 @@ export default function VotingPage({
 
           <button
             onClick={handleConfirm}
-            disabled={!selected}
+            disabled={!selected || submitting}
             style={{
               ...styles.actionButtonGreen,
               width: "100%", marginTop: 16,
-              opacity: selected ? 1 : 0.6, cursor: selected ? "pointer" : "not-allowed",
+              opacity: selected && !submitting ? 1 : 0.6,
+              cursor: selected && !submitting ? "pointer" : "not-allowed",
             }}
           >
-            Confirm choice
+            {submitting ? "Sending…" : "Confirm choice"}
           </button>
         </div>
       </div>
@@ -103,10 +135,8 @@ export default function VotingPage({
 
 const styles: { [k: string]: React.CSSProperties } = {
   page: { fontFamily: "Inter, sans-serif", backgroundColor: "#f5f6f8", minHeight: "100vh", color: "#333" },
-  header: {
-    display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "16px 24px", backgroundColor: "#fff", boxShadow: "0 4px 6px rgba(0,0,0,.1)", position: "sticky", top: 0, zIndex: 10,
-  },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "16px 24px", backgroundColor: "#fff", boxShadow: "0 4px 6px rgba(0,0,0,.1)", position: "sticky", top: 0, zIndex: 10 },
   menuButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   userButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   content: { padding: 24, maxWidth: 420, margin: "0 auto" },
