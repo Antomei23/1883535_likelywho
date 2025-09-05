@@ -33,12 +33,13 @@ services:
     networks: [app]
 
   user-service:
-    build: ./services/user-management-service   # <-- qui il tuo servizio
+    build: ./services/user-service   # <-- qui il tuo servizio
     container_name: user-service
-    env_file: ./services/user-management-service/.env
+    env_file: ./services/user-service/.env
     depends_on: [postgres]
     ports:
       - "4001:4001"
+      - "5555:5555"
     networks: [app]
 
   question-service:
