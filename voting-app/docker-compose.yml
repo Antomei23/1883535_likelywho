@@ -70,10 +70,12 @@ services:
     networks: [app]
 
   api-gateway:
-    build: ./api-gateway
+    build:
+      context: .               # usa la root del progetto come contesto
+      dockerfile: api-gateway/Dockerfile
     container_name: api-gateway
     ports:
-      - "3000:3000"
+      - "3000:8080"
     depends_on:
       - user-service
       - question-service
@@ -81,14 +83,6 @@ services:
       - notification-service
     networks: [app]
 
-  frontend:
-    build: ./frontend
-    container_name: frontend
-    ports:
-      - "3005:3005"
-    depends_on:
-      - api-gateway
-    networks: [app]
 
 networks:
   app:

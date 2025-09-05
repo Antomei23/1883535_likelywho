@@ -1,5 +1,12 @@
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") } // ?schema=votes
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // schema = "votes"   <-- opzionale, se vuoi specificare lo schema
+}
 
 model Vote {
   id          String   @id @default(uuid())

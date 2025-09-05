@@ -1,0 +1,17 @@
+FROM node:20-alpine
+WORKDIR /app
+
+# Copia package.json e package-lock.json da api-gateway
+COPY api-gateway/package*.json ./
+
+# Installa dipendenze
+RUN npm install --production
+
+# Copia solo il file server.js di api-gateway
+COPY api-gateway/server.js ./server.js
+
+# Copia la cartella lib (fuori da api-gateway)
+COPY lib ./lib
+
+# Avvio
+CMD ["node", "server.js"]

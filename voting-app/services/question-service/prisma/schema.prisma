@@ -1,13 +1,20 @@
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") } // ?schema=questions
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // schema = "questions"  <-- commento opzionale sopra la proprietà
+}
 
 model Question {
-  id         String   @id @default(uuid())
-  groupId    String
-  text       String
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime
-  closed     Boolean  @default(false)
+  id        String   @id @default(uuid())
+  groupId   String
+  text      String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  closed    Boolean  @default(false)
 
   @@index([groupId])
   @@index([expiresAt])
