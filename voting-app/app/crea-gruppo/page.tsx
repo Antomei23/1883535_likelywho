@@ -3,26 +3,58 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+
+// TODO: sostituisci con l'utente reale dal tuo sistema di auth
+const CURRENT_USER_ID = "u7";
+const CURRENT_USER_NAME = "Riccardo";
+
 const CreaGruppoPage = () => {
   const router = useRouter();
   const [groupName, setGroupName] = useState("");
   const [notificationTime, setNotificationTime] = useState("morning");
   const [disableSelfVote, setDisableSelfVote] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log({
-      groupName,
-      notificationTime,
-      disableSelfVote,
-    });
+    setError(null);
+    if (!groupName.trim()) {
+      setError("Inserisci un nome per il gruppo.");
+      return;
+    }
 
-    router.push("/crea-gruppo/step2");
+    try {
+      setSubmitting(true);
+      const res = await fetch(`${API_BASE}/api/groups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: groupName.trim(),
+          leaderId: CURRENT_USER_ID,
+          leaderName: CURRENT_USER_NAME,
+          notificationTime,       // preferenza (mock)
+          disableSelfVote,        // preferenza (mock)
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json() as { ok: boolean; group: { id: string } };
+      if (!data?.ok || !data?.group?.id) throw new Error("Creazione gruppo fallita");
+
+      // Passo a Step 2 portandomi dietro il groupId
+      router.push(`/crea-gruppo/step2?groupId=${encodeURIComponent(data.group.id)}`);
+    } catch (err) {
+      console.error(err);
+      setError("Errore nella creazione del gruppo. Riprova.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div style={styles.page}>
-      <h1 style={styles.heading}>Crate a new group</h1>
+      <h1 style={styles.heading}>Create a new group</h1>
 
       <form onSubmit={handleSubmit} style={styles.form}>
         <label style={styles.label}>Group name:</label>
@@ -42,10 +74,11 @@ const CreaGruppoPage = () => {
           style={styles.select}
         >
           <option value="morning">Morning (7 AM)</option>
-          <option value="midday">Midday (12 AM)</option>
+          <option value="midday">Midday (12 PM)</option>
           <option value="afternoon">Afternoon (5 PM)</option>
           <option value="evening">Evening (8 PM)</option>
         </select>
+
         <div>If you do not want a player to vote for him/her-self, then check the following box:</div>
         <div style={styles.checkboxContainer}>
           <input
@@ -59,7 +92,11 @@ const CreaGruppoPage = () => {
           </label>
         </div>
 
-        <button type="submit" style={styles.button}>Continue</button>
+        {error && <div style={styles.error}>{error}</div>}
+
+        <button type="submit" disabled={submitting} style={{ ...styles.button, opacity: submitting ? .6 : 1 }}>
+          {submitting ? "Creating…" : "Continue"}
+        </button>
       </form>
     </div>
   );
@@ -115,9 +152,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     gap: "10px",
     fontSize: "14px",
   },
-  checkboxLabel: {
-    fontSize: "15px",
-  },
+  checkboxLabel: { fontSize: "15px" },
   button: {
     marginTop: "10px",
     backgroundColor: "#007bff",
@@ -127,6 +162,13 @@ const styles: { [key: string]: React.CSSProperties } = {
     fontSize: "16px",
     borderRadius: "6px",
     cursor: "pointer",
+  },
+  error: {
+    background: "#ffecec",
+    color: "#7a0b0b",
+    border: "1px solid #f7c2c2",
+    padding: "8px",
+    borderRadius: "6px",
   },
 };
 

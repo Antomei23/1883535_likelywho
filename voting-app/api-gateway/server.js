@@ -1,11 +1,21 @@
 // voting-app/api-gateway/server.js
 const express = require("express");
 const cors = require("cors");
+
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ==== MOCK DATA (riutilizza/integra i tuoi) ====
+// -----------------------------
+// Helpers
+// -----------------------------
+function makeId(prefix = "g") {
+  return `${prefix}${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
+// -----------------------------
+// MOCK DATA (sviluppo)
+// -----------------------------
 const mockGroups = {
   g1: {
     id: "g1",
@@ -17,9 +27,10 @@ const mockGroups = {
       { id: "u7", name: "Riccardo" },
       { id: "u8", name: "Sandra" },
     ],
-    points: { u1: 3, u2: 5, u7: 2, u8: 1 }, // leaderboard mock
+    points: { u1: 3, u2: 5, u7: 2, u8: 1 },
+    settings: { notificationTime: "morning", disableSelfVote: false },
+    categories: ["Game", "Music", "Food"],
   },
-  // Aggiunti per popolare la home con 3 gruppi
   g2: {
     id: "g2",
     name: "Weekend Warriors",
@@ -30,6 +41,8 @@ const mockGroups = {
       { id: "u11", name: "Paolo" },
     ],
     points: { u9: 1, u10: 2, u11: 0 },
+    settings: { notificationTime: "evening", disableSelfVote: true },
+    categories: ["Sport", "Films"],
   },
   g3: {
     id: "g3",
@@ -40,6 +53,8 @@ const mockGroups = {
       { id: "u13", name: "Enzo" },
     ],
     points: { u12: 4, u13: 4 },
+    settings: { notificationTime: "afternoon", disableSelfVote: false },
+    categories: ["Culture", "Book"],
   },
 };
 
@@ -50,19 +65,54 @@ let mockQuestions = {
     createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
     deadline: new Date(Date.now() + 1000 * 60 * 60 * 23).toISOString(),
     answeredBy: new Set(), // userIds che hanno votato
-    votedLog: [], // {voterId, votedUserId}
+    votedLog: [],          // {voterId, votedUserId}
   },
   // g2/g3 per ora senza domanda attiva
 };
 
-// ====== LISTA GRUPPI ======
+// -----------------------------
+// Groups - LIST
+// -----------------------------
 app.get("/api/groups", (req, res) => {
-  // restituisci una lista semplice {id, name}
-  const arr = Object.values(mockGroups).map((g) => ({ id: g.id, name: g.name }));
+  // risposta minimale per la Home
+  const arr = Object.values(mockGroups).map((g) => ({
+    id: g.id,
+    name: g.name,
+  }));
   res.json(arr);
 });
 
-// ====== Groups ======
+// -----------------------------
+// Groups - CREATE
+// -----------------------------
+app.post("/api/groups", (req, res) => {
+  const { name, leaderId, leaderName, notificationTime, disableSelfVote } = req.body || {};
+  if (!name || !leaderId) {
+    return res.status(400).json({ ok: false, error: "Missing name or leaderId" });
+  }
+
+  const id = makeId("g");
+  const group = {
+    id,
+    name,
+    leader: { id: leaderId, name: leaderName ?? leaderId },
+    members: [{ id: leaderId, name: leaderName ?? leaderId }],
+    points: { [leaderId]: 0 },
+    settings: {
+      notificationTime: notificationTime ?? "morning",
+      disableSelfVote: !!disableSelfVote,
+    },
+    categories: [],
+  };
+
+  mockGroups[id] = group;
+  console.log(`[MOCK] created group ${id} "${name}" (leader=${leaderId})`);
+  res.status(201).json({ ok: true, group });
+});
+
+// -----------------------------
+// Groups - READ + MEMBERS
+// -----------------------------
 app.get("/api/groups/:groupId", (req, res) => {
   const g = mockGroups[req.params.groupId];
   if (!g) return res.status(404).json({ error: "Group not found" });
@@ -75,16 +125,34 @@ app.get("/api/groups/:groupId/members", (req, res) => {
   res.json({ members: g.members });
 });
 
-// Invite
+// -----------------------------
+// Groups - INVITE (mock)
+// -----------------------------
 app.post("/api/groups/:groupId/invite", (req, res) => {
   const { groupId } = req.params;
   const { userIds = [], emails = [] } = req.body || {};
   console.log(`[MOCK] invite to group ${groupId}: userIds=${userIds.join(",")} emails=${emails.join(",")}`);
-  // In un microservizio reale: crea/invia inviti e aggiungi i nuovi membri (pending/accepted)
+  // In produzione: chiamata al microservizio Users/Invites
   res.json({ ok: true });
 });
 
-// ====== Questions ======
+// -----------------------------
+// Groups - CATEGORIES
+// -----------------------------
+app.post("/api/groups/:groupId/categories", (req, res) => {
+  const { groupId } = req.params;
+  const { categories = [] } = req.body || {};
+  const g = mockGroups[groupId];
+  if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
+
+  g.categories = Array.isArray(categories) ? categories.slice(0, 12) : [];
+  console.log(`[MOCK] categories set for ${groupId}: ${g.categories.join(", ")}`);
+  res.json({ ok: true });
+});
+
+// -----------------------------
+// Questions - PENDING
+// -----------------------------
 app.get("/api/groups/:groupId/pending-question", (req, res) => {
   const { groupId } = req.params;
   const { userId } = req.query;
@@ -95,7 +163,7 @@ app.get("/api/groups/:groupId/pending-question", (req, res) => {
   const hasAnswered = q.answeredBy.has(userId);
   const hasPending = !expired && !hasAnswered;
 
-  // Nota: non inviamo strutture non-serializzabili (Set)
+  // Non serializziamo Set
   const safe = q && hasPending
     ? {
         id: q.id,
@@ -108,11 +176,13 @@ app.get("/api/groups/:groupId/pending-question", (req, res) => {
   res.json({ hasPending, question: safe });
 });
 
+// -----------------------------
+// Questions - CREATE
+// -----------------------------
 app.post("/api/questions", (req, res) => {
   const { groupId, text, expiresInHours = 24 } = req.body || {};
   if (!groupId || !text) return res.status(400).json({ ok: false, error: "Missing fields" });
 
-  // crea nuova domanda per il gruppo
   const qid = `q${Math.floor(Math.random() * 100000)}`;
   mockQuestions[groupId] = {
     id: qid,
@@ -126,7 +196,9 @@ app.post("/api/questions", (req, res) => {
   res.json({ ok: true, questionId: qid });
 });
 
-// ====== Votes / Leaderboard ======
+// -----------------------------
+// Votes + Leaderboard
+// -----------------------------
 app.post("/api/votes", (req, res) => {
   const { groupId, questionId, voterId, votedUserId } = req.body;
   const q = mockQuestions[groupId];
@@ -137,6 +209,7 @@ app.post("/api/votes", (req, res) => {
   // salva voto
   q.answeredBy.add(voterId);
   q.votedLog.push({ voterId, votedUserId });
+
   // aggiorna punteggi
   g.points[votedUserId] = (g.points[votedUserId] ?? 0) + 1;
   console.log(`[MOCK] +1 punto a ${votedUserId} nel gruppo ${groupId} (da ${voterId})`);
@@ -169,6 +242,9 @@ app.get("/api/groups/:groupId/leaderboard", (req, res) => {
   });
 });
 
+// -----------------------------
+// Boot
+// -----------------------------
 const PORT = 8080;
 app.listen(PORT, () => {
   console.log(`✅ API Gateway running on http://localhost:${PORT}`);

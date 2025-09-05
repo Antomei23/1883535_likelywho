@@ -1,9 +1,11 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function SuccessPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const groupId = searchParams.get("groupId");
 
   const styles: { [key: string]: React.CSSProperties } = {
     container: {
@@ -22,6 +24,7 @@ export default function SuccessPage() {
       color: '#333',
       marginBottom: '30px',
     },
+    row: { display: "flex", gap: 10 },
     button: {
       padding: '12px 24px',
       fontSize: '16px',
@@ -31,14 +34,30 @@ export default function SuccessPage() {
       borderRadius: '8px',
       cursor: 'pointer',
     },
+    secondary: {
+      padding: '12px 24px',
+      fontSize: '16px',
+      backgroundColor: '#007bff',
+      color: '#fff',
+      border: 'none',
+      borderRadius: '8px',
+      cursor: 'pointer',
+    }
   };
 
   return (
     <div style={styles.container}>
       <p style={styles.message}>Gruppo creato con successo!</p>
-      <button style={styles.button} onClick={() => router.push('/home')}>
-        Vai alla Home
-      </button>
+      <div style={styles.row}>
+        <button style={styles.button} onClick={() => router.push('/home')}>
+          Vai alla Home
+        </button>
+        {groupId && (
+          <button style={styles.secondary} onClick={() => router.push(`/gruppo/${groupId}`)}>
+            Apri il gruppo
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import "./styles.css"; // stile coerente
+import { useRouter, useSearchParams } from "next/navigation";
+import "./styles.css"; // se già presente
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 const initialCategories = [
   "Game", "Films", "Music", "Food", "Science",
@@ -11,16 +13,19 @@ const initialCategories = [
 
 const Step2Page = () => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const groupId = searchParams.get("groupId"); // passato da step1
+
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState(initialCategories);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [gridVisible, setGridVisible] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setGridVisible(true); 
-  }, []);
+  useEffect(() => { setGridVisible(true); }, []);
 
   const toggleCategory = (category: string) => {
     setSelectedCategories((prev) =>
@@ -44,10 +49,29 @@ const Step2Page = () => {
     }
   };
 
-  const handleConfirm = () => {
-    if (isConfirmEnabled) {
-      console.log("Categorie selezionate:", selectedCategories);
-      router.push("/crea-gruppo/success");
+  const handleConfirm = async () => {
+    if (!groupId) {
+      setError("Manca il groupId. Torna allo step precedente.");
+      return;
+    }
+    if (!selectedCategories.length) return;
+
+    try {
+      setSaving(true);
+      setError(null);
+      const res = await fetch(`${API_BASE}/api/groups/${groupId}/categories`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categories: selectedCategories }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      // Vai alla pagina di conferma
+      router.push(`/crea-gruppo/success?groupId=${encodeURIComponent(groupId)}`);
+    } catch (e) {
+      console.error(e);
+      setError("Errore nel salvataggio delle categorie.");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -95,6 +119,15 @@ const Step2Page = () => {
         </div>
       )}
 
+      {error && (
+        <div style={{
+          background: "#ffecec", color: "#7a0b0b", border: "1px solid #f7c2c2",
+          padding: 8, borderRadius: 6, margin: "10px 0"
+        }}>
+          {error}
+        </div>
+      )}
+
       <div className={`grid ${gridVisible ? "fadeIn" : ""}`}>
         {categories
           .filter((cat) =>
@@ -113,12 +146,12 @@ const Step2Page = () => {
           ))}
       </div>
 
-        <button
-        disabled={!isConfirmEnabled}
+      <button
+        disabled={!isConfirmEnabled || saving}
         className={`confirmButton ${isConfirmEnabled ? "activeConfirm" : ""}`}
         onClick={handleConfirm}
       >
-        Confirm Choice
+        {saving ? "Saving…" : "Confirm Choice"}
       </button>
     </div>
   );
