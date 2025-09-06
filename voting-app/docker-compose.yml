@@ -1,171 +1,89 @@
-version: "3.9"
+# version: "3.9"
 
 services:
   postgres:
     image: postgres:16
-    container_name: db-postgres
+    container_name: postgres
     environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: appdb
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: likelywho
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d appdb"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-    networks:
-      - appnet
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    networks: [app]
 
-  api-gateway:
-    build: ./api-gateway
-    container_name: api-gateway
-    # Se usi variabili per puntare i servizi dal gateway, mettile qui:
-    environment:
-      AUTH_SERVICE_URL: http://auth-service:4001
-      USER_SERVICE_URL: http://user-service:4002
-      QUESTION_SERVICE_URL: http://question-service:4003
-      VOTING_SERVICE_URL: http://voting-service:4004
-      NOTIF_SERVICE_URL: http://notification-service:4005
-      # Esempio chiavi JWT (se servono al middleware)
-      JWT_PUBLIC_KEY: ${JWT_PUBLIC_KEY:-dummy}
-      JWT_SECRET: ${JWT_SECRET:-devsecret}
-      NODE_ENV: production
+  adminer:
+    image: adminer:4
+    container_name: adminer
     ports:
-      - "8080:8080"
-    depends_on:
-      postgres:
-        condition: service_healthy
-      auth-service:
-        condition: service_started
-      user-service:
-        condition: service_started
-      question-service:
-        condition: service_started
-      voting-service:
-        condition: service_started
-      notification-service:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - appnet
+      - "8081:8080"
+    depends_on: [postgres]
+    networks: [app]
 
   auth-service:
     build: ./services/auth-service
     container_name: auth-service
-    environment:
-      DATABASE_URL: postgres://app:app@postgres:5432/appdb
-      JWT_SECRET: ${JWT_SECRET:-devsecret}
-      NODE_ENV: production
-      PORT: 4001
-    expose:
-      - "4001"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - appnet
+    env_file: ./services/auth-service/.env
+    depends_on: [postgres]
+    ports:
+      - "4000:4000"
+    networks: [app]
 
   user-service:
-    build: ./services/user-service
+    build: ./services/user-service   # <-- qui il tuo servizio
     container_name: user-service
-    environment:
-      DATABASE_URL: postgres://app:app@postgres:5432/appdb
-      NODE_ENV: production
-      PORT: 4002
-    expose:
-      - "4002"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - appnet
+    env_file: ./services/user-service/.env
+    depends_on: [postgres]
+    ports:
+      - "4001:4001"
+      - "5555:5555"
+    networks: [app]
 
   question-service:
     build: ./services/question-service
     container_name: question-service
-    environment:
-      DATABASE_URL: postgres://app:app@postgres:5432/appdb
-      NODE_ENV: production
-      PORT: 4003
-    expose:
-      - "4003"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - appnet
+    env_file: ./services/question-service/.env
+    depends_on: [postgres]
+    ports:
+      - "4002:4002"
+    networks: [app]
 
   voting-service:
     build: ./services/voting-service
     container_name: voting-service
-    environment:
-      DATABASE_URL: postgres://app:app@postgres:5432/appdb
-      NODE_ENV: production
-      PORT: 4004
-    expose:
-      - "4004"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - appnet
+    env_file: ./services/voting-service/.env
+    depends_on: [postgres]
+    ports:
+      - "4003:4003"
+    networks: [app]
 
   notification-service:
     build: ./services/notification-service
     container_name: notification-service
-    environment:
-      DATABASE_URL: postgres://app:app@postgres:5432/appdb
-      SMTP_URL: ${SMTP_URL:-smtp://user:pass@mailhog:1025} # opzionale, se invii email
-      NODE_ENV: production
-      PORT: 4005
-    expose:
-      - "4005"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - appnet
-
-  frontend:
-    build: ./voting-app
-    container_name: voting-frontend
-    environment:
-      # ⚠️ Browser → chiama localhost:8080 fuori da Docker
-      NEXT_PUBLIC_API_BASE: http://localhost:8080
-      # ⚠️ SSR/Route handlers nel container → usano hostname della rete Docker
-      SERVER_API_BASE: http://api-gateway:8080
-      NODE_ENV: production
-      PORT: 3000
+    env_file: ./services/notification-service/.env
+    depends_on: [postgres]
     ports:
-      - "3000:3000"
+      - "4004:4004"
+    networks: [app]
+
+  api-gateway:
+    build:
+      context: .               # usa la root del progetto come contesto
+      dockerfile: api-gateway/Dockerfile
+    container_name: api-gateway
+    ports:
+      - "3000:8080"
     depends_on:
-      api-gateway:
-        condition: service_started
-    restart: unless-stopped
-    networks:
-      - appnet
+      - user-service
+      - question-service
+      - voting-service
+      - notification-service
+    networks: [app]
 
-  # (Opzionale) Mailhog per test email del notification-service
-  # mailhog:
-  #   image: mailhog/mailhog:latest
-  #   container_name: mailhog
-  #   ports:
-  #     - "8025:8025" # UI
-  #     - "1025:1025" # SMTP
-  #   networks:
-  #     - appnet
-
-volumes:
-  pgdata:
 
 networks:
-  appnet:
+  app:
+    driver: bridge
