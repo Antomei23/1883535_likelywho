@@ -1,11 +1,15 @@
 // voting-app/lib/api.ts
-// Stile identico al tuo file originale:
-// - API_BASE con default localhost:8080
-// - helper j<T>(r: Response)
-// - fetch con { cache: "no-store" }
-// - nomi funzioni invariati (getGroupMembers, getPendingQuestion, sendVote, ...)
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+function resolveApiBase() {
+  // In SSR (Node dentro Docker) → usa il service name interno
+  if (typeof window === "undefined") {
+    return process.env.SERVER_API_BASE || "http://api-gateway:8080";
+  }
+  // In browser → usa l’host raggiungibile dall’esterno
+  return process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
+}
+
+export const API_BASE = resolveApiBase();
 
 /* =========================
  * Types usati dal frontend
