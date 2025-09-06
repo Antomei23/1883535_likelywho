@@ -66,12 +66,16 @@ export default function ProfilePage() {
   return (
     <div style={styles.page}>
       <div style={styles.avatar}>
-        {/* user icon or avatar */}
         {profile.avatarUrl ? (
-          <img src={profile.avatarUrl} alt="avatar" style={{ width: "100%", height: "100%", borderRadius: "50%" }} />
+          <img
+            src={profile.avatarUrl}
+            alt="avatar"
+            style={{ width: "100%", height: "100%", borderRadius: "50%" }}
+          />
         ) : (
+          // semplice icona utente fallback
           <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" />
+            <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-10 1.934-10 5v3h20v-3c0-3.066-6.134-5-10-5z" />
           </svg>
         )}
       </div>
@@ -79,19 +83,35 @@ export default function ProfilePage() {
       <div style={styles.infoBox}>
         <div style={styles.row}>
           <span style={styles.label}>First Name</span>
-          <input style={styles.input} value={profile.firstName} onChange={(e) => onChange("firstName", e.target.value)} />
+          <input
+            style={styles.input}
+            value={profile.firstName}
+            onChange={(e) => onChange("firstName", e.target.value)}
+          />
         </div>
         <div style={styles.row}>
           <span style={styles.label}>Last Name</span>
-          <input style={styles.input} value={profile.lastName} onChange={(e) => onChange("lastName", e.target.value)} />
+          <input
+            style={styles.input}
+            value={profile.lastName}
+            onChange={(e) => onChange("lastName", e.target.value)}
+          />
         </div>
         <div style={styles.row}>
           <span style={styles.label}>Username</span>
-          <input style={styles.input} value={profile.username} onChange={(e) => onChange("username", e.target.value)} />
+          <input
+            style={styles.input}
+            value={profile.username}
+            onChange={(e) => onChange("username", e.target.value)}
+          />
         </div>
         <div style={styles.row}>
           <span style={styles.label}>Email</span>
-          <input style={styles.input} value={profile.email} onChange={(e) => onChange("email", e.target.value)} />
+          <input
+            style={styles.input}
+            value={profile.email}
+            onChange={(e) => onChange("email", e.target.value)}
+          />
         </div>
       </div>
 

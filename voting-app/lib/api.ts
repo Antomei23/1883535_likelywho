@@ -14,35 +14,42 @@ export type Member = { id: string; name: string; avatarUrl?: string };
 export type Group = {
   id: string;
   name: string;
-  leader?: { id: string; name: string } | Member | null;
+  leader?: { id: string; name: string } | null;
   members?: Member[];
   points?: Record<string, number>;
-  settings?: Record<string, unknown>;
+  settings?: { notificationTime: "morning" | "afternoon" | "evening"; disableSelfVote: boolean };
   categories?: string[];
 };
-export type Question = { id: string; text: string; createdAt: string; deadline: string };
+
 export type LeaderboardEntry = { userId: string; name: string; points: number };
 export type LeaderboardResponse = {
   questionText: string;
   voted: string[];
   entries: LeaderboardEntry[];
-};export type CreateQuestionPayload = {
-  groupId: string;
+};
+
+export type PendingQuestion = {
+  id: string;
   text: string;
-  expiresInHours?: number; // default lato server 24
+  createdAt: string;
+  deadline: string;
 };
-export type CreateQuestionResponse = {
+
+export type PendingQuestionResponse =
+  | { hasPending: false; question?: undefined }
+  | { hasPending: true; question: PendingQuestion };
+
+export type InviteResponse = { ok: boolean; code?: string; error?: string };
+export type JoinByCodeResponse = { ok: boolean; groupId?: string; groupName?: string; error?: string };
+
+export type UserScores = {
   ok: boolean;
-  questionId: string;
+  totalPoints: number;
+  groupPoints: Array<{ groupId: string; groupName: string; points: number }>;
 };
-export type InviteMembersPayload = {
-  userIds: string[];
-  emails: string[];
-};
-/* ================
- * User-Service
- * ================ */
-export type UserProfile = {
+
+/** Aggiunto: profilo utente, coerente con l'API gateway */
+export interface UserProfile {
   id: string;
   username: string;
   email: string;
@@ -50,150 +57,131 @@ export type UserProfile = {
   lastName: string;
   avatarUrl: string;
   createdAt?: string;
-};
-export type UserScores = {
-  totalPoints: number;
-  groupPoints: { groupId: string; groupName: string; points: number }[];
-};
+}
 
 /* =========================
  * Helper JSON
  * ========================= */
 async function j<T>(r: Response): Promise<T> {
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const msg = (data as any)?.error ?? `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+  return data as T;
 }
 
-/* =========================
- * Groups (compatibili col tuo frontend)
- * ========================= */
-
-// (Usata dalla home)
+/* =========================================================
+ * GROUPS
+ * ========================================================= */
 export async function getGroups(): Promise<Group[]> {
   const r = await fetch(`${API_BASE}/api/groups`, { cache: "no-store" });
   return j<Group[]>(r);
 }
 
-// (Usata dalla pagina del gruppo)
 export async function getGroup(groupId: string): Promise<Group> {
   const r = await fetch(`${API_BASE}/api/groups/${groupId}`, { cache: "no-store" });
   return j<Group>(r);
 }
 
-// (Usata da voting page & gruppo page)
-export async function getGroupMembers(groupId: string): Promise<Member[]> {
-  const r = await fetch(`${API_BASE}/api/groups/${groupId}/members`, { cache: "no-store" });
-  const data = await j<{ members: Member[] }>(r);
-  return data.members;
-}
-
-// (Usata dalla voting page)
-export async function getPendingQuestion(
-  groupId: string,
-  userId: string
-): Promise<{ hasPending: boolean; question?: Question }> {
-  const r = await fetch(
-    `${API_BASE}/api/groups/${groupId}/pending-question?userId=${encodeURIComponent(userId)}`,
-    { cache: "no-store" }
-  );
+export async function createGroup(payload: {
+  name: string;
+  leaderId: string;
+  leaderName?: string;
+  notificationTime?: "morning" | "afternoon" | "evening";
+  disableSelfVote?: boolean;
+}): Promise<{ ok: boolean; group?: Group; error?: string }> {
+  const r = await fetch(`${API_BASE}/api/groups`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
   return j(r);
 }
 
-// (Usata dalla voting page — nome invariato)
-export async function createQuestion(
-  payload: CreateQuestionPayload
-): Promise<CreateQuestionResponse> {
+export async function getGroupMembers(groupId: string): Promise<{ members: Member[] }> {
+  const r = await fetch(`${API_BASE}/api/groups/${groupId}/members`, { cache: "no-store" });
+  return j(r);
+}
+
+export async function getLeaderboard(groupId: string): Promise<LeaderboardResponse> {
+  const r = await fetch(`${API_BASE}/api/groups/${groupId}/leaderboard`, { cache: "no-store" });
+  return j(r);
+}
+
+/* =========================================================
+ * QUESTIONS & VOTES
+ * ========================================================= */
+export async function getPendingQuestion(groupId: string, userId: string): Promise<PendingQuestionResponse> {
+  const u = new URL(`${API_BASE}/api/groups/${groupId}/pending-question`);
+  u.searchParams.set("userId", userId);
+  const r = await fetch(u.toString(), { cache: "no-store" });
+  return j<PendingQuestionResponse>(r);
+}
+
+export async function createQuestion(payload: {
+  groupId: string;
+  text: string;
+  expiresInHours?: number;
+}): Promise<{ ok: boolean; questionId?: string; error?: string }> {
   const r = await fetch(`${API_BASE}/api/questions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     cache: "no-store",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return j<CreateQuestionResponse>(r);
+  return j(r);
 }
+
 export async function sendVote(payload: {
   groupId: string;
   questionId: string;
   voterId: string;
   votedUserId: string;
-}) {
+}): Promise<{ ok: boolean; error?: string }> {
   const r = await fetch(`${API_BASE}/api/votes`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     cache: "no-store",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return j<{ ok: boolean }>(r);
+  return j(r);
 }
 
-// (Usata dalla pagina stats del gruppo se presente)
-export async function getLeaderboard(groupId: string): Promise<LeaderboardResponse> {
-  const r = await fetch(`${API_BASE}/api/groups/${groupId}/leaderboard`, { cache: "no-store" });
-  return j<LeaderboardResponse>(r);
-}
-export async function inviteMembers(groupId: string, payload: InviteMembersPayload): Promise<{ ok: boolean; code: string }> {
+/* =========================================================
+ * INVITES
+ * ========================================================= */
+export async function createInvite(
+  groupId: string,
+  payload: { userIds?: string[]; emails?: string[] } = {}
+): Promise<InviteResponse> {
   const r = await fetch(`${API_BASE}/api/groups/${groupId}/invite`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     cache: "no-store",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   return j(r);
 }
-/* -------- JOIN BY CODE: nuova funzione per /unisciti-gruppo -------- */
-// se poi aggiungeremo auth reale, qui basterà appendere il token.
-export async function joinGroupByCode(
-  code: string,
-  userId: string,
-  userName?: string
-): Promise<{ ok: boolean; groupId: string; groupName: string }> {
+
+export async function joinGroupByCode(payload: {
+  code: string;
+  userId: string;
+  userName?: string;
+}): Promise<JoinByCodeResponse> {
   const r = await fetch(`${API_BASE}/api/groups/join`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({ code, userId, userName }),
-  });
-  return j(r);
-}
-/* =========================
- * User-Service (nuove funzioni per profilo / reset psw)
- * ========================= */
-
-// GET profilo utente
-export async function getProfile(userId: string): Promise<{ ok: boolean; profile?: UserProfile; error?: string }> {
-  const r = await fetch(`${API_BASE}/api/users/${userId}/profile`, { cache: "no-store" });
-  return j(r);
-}
-
-// UPDATE profilo utente
-export async function updateProfile(
-  userId: string,
-  payload: Partial<Pick<UserProfile, "username" | "email" | "firstName" | "lastName" | "avatarUrl">>
-): Promise<{ ok: boolean; profile?: UserProfile; error?: string }> {
-  const r = await fetch(`${API_BASE}/api/users/${userId}/profile`, {
-    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    cache: "no-store",
     body: JSON.stringify(payload),
   });
   return j(r);
 }
 
-// RESET password (usata da /resetpsw)
-export async function resetPassword(
-  email: string,
-  newPassword: string
-): Promise<{ ok: boolean; message?: string; error?: string }> {
-  const r = await fetch(`${API_BASE}/api/users/reset-password`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    cache: "no-store",
-    body: JSON.stringify({ email, newPassword }),
-  });
-  return j(r);
-}
-
-// Punteggi personali (usata da /profile/scores)
+/* =========================================================
+ * USER SCORES (già presente nel tuo file)
+ * ========================================================= */
 export async function getUserScores(
   userId: string
 ): Promise<{ ok: boolean; totalPoints: number; groupPoints: UserScores["groupPoints"] }> {
@@ -201,11 +189,71 @@ export async function getUserScores(
   return j(r);
 }
 
-// Cancellazione account (usata da /profile/delete-account)
+/* =========================================================
+ * DELETE ACCOUNT (già presente nel tuo file)
+ * ========================================================= */
 export async function deleteAccount(userId: string): Promise<{ ok: boolean; error?: string }> {
   const r = await fetch(`${API_BASE}/api/users/${userId}`, {
     method: "DELETE",
     cache: "no-store",
+  });
+  return j(r);
+}
+
+/* =========================================================
+ * Aggiunte per /app/profile/page.tsx
+ * ========================================================= */
+
+/** Ritorna l'userId dall'archiviazione locale; fallback mock "u7" per permettere sviluppo locale. */
+export function getCurrentUserId(): string {
+  if (typeof window === "undefined") return "u7";
+  const saved = window.localStorage.getItem("userId");
+  if (saved && saved.trim().length > 0) return saved;
+  window.localStorage.setItem("userId", "u7");
+  return "u7";
+}
+
+/** GET profilo utente */
+export async function getProfile(
+  userId: string
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, { cache: "no-store" });
+    const data = await r.json();
+    if (!r.ok || data?.ok === false) return { ok: false, error: data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, profile: data.profile as UserProfile };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Network error" };
+  }
+}
+
+/** PUT profilo utente */
+export async function updateProfile(
+  userId: string,
+  payload: Partial<Pick<UserProfile, "username" | "email" | "firstName" | "lastName" | "avatarUrl">>
+): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
+  try {
+    const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
+      method: "PUT",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json();
+    if (!r.ok || data?.ok === false) return { ok: false, error: data?.error ?? `HTTP ${r.status}` };
+    return { ok: true, profile: data.profile as UserProfile };
+  } catch (e: any) {
+    return { ok: false, error: e?.message ?? "Network error" };
+  }
+}
+
+/** (Opzionale) reset password usato dalla pagina /resetpsw */
+export async function resetPassword(email: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+  const r = await fetch(`${API_BASE}/api/users/reset-password`, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, newPassword }),
   });
   return j(r);
 }

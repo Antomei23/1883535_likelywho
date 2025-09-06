@@ -360,6 +360,23 @@ app.post("/api/groups/join", (req, res) => {
   // (opzionale) invalidare codice singolo uso:
   // inviteCodes.delete(code.toUpperCase());
 
+  //------------------------------------------------------------------------------
+  // Per il futuro, quando voglio far “sparire” il fallback, basta aggiungere la route:
+  // POST /api/groups/:groupId/categories
+/*app.post("/api/groups/:groupId/categories", (req, res) => {
+  const { groupId } = req.params;
+  const { categories } = req.body || {};
+  const g = mockGroups[groupId];
+  if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
+  if (!Array.isArray(categories) || categories.length === 0) {
+    return res.status(400).json({ ok: false, error: "categories must be a non-empty array" });
+  }
+  g.categories = Array.from(new Set(categories.map((c) => String(c).trim()).filter(Boolean)));
+  res.json({ ok: true, groupId, categories: g.categories });
+});
+*/
+//-----------------------------------------------------------------
+
   res.json({ ok: true, groupId: g.id, groupName: g.name });
 });
 

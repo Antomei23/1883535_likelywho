@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import "./styles.css"; // se già presente
+import "./styles.css"; // (se presente nel tuo progetto)
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -11,42 +11,87 @@ const initialCategories = [
   "Animal", "Book", "Sport", "Culture", "Fashion"
 ];
 
+const STORAGE_KEY = (groupId: string) => `group:${groupId}:categories`;
+
 const Step2Page = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const groupId = searchParams.get("groupId"); // passato da step1
 
   const [search, setSearch] = useState("");
-  const [categories, setCategories] = useState(initialCategories);
+  const [categories, setCategories] = useState<string[]>(initialCategories);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [gridVisible, setGridVisible] = useState(false);
   const [newCategory, setNewCategory] = useState("");
   const [isAddingCategory, setIsAddingCategory] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirmEnabled = selectedCategories.length > 0 && !saving;
 
   useEffect(() => { setGridVisible(true); }, []);
 
+  // Precarica eventuali categorie dal server o da localStorage (fallback)
+  useEffect(() => {
+    if (!groupId) return;
+
+    // 1) prova a prendere dal server (se esiste la proprietà categories)
+    (async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}`, { cache: "no-store" });
+        if (r.ok) {
+          const g = await r.json();
+          if (Array.isArray(g?.categories) && g.categories.length > 0) {
+            // unisci l’elenco base con eventuali nuove categorie dal server
+            setCategories(prev => Array.from(new Set([...prev, ...g.categories])));
+            // pre-seleziona quelle già assegnate al gruppo
+            setSelectedCategories(Array.from(new Set(g.categories)));
+            return;
+          }
+        }
+      } catch {
+        // ignora: passeremo al fallback
+      }
+
+      // 2) fallback: prova da localStorage
+      if (typeof window !== "undefined") {
+        const raw = localStorage.getItem(STORAGE_KEY(groupId));
+        if (raw) {
+          try {
+            const saved: string[] = JSON.parse(raw);
+            if (Array.isArray(saved) && saved.length > 0) {
+              setCategories(prev => Array.from(new Set([...prev, ...saved])));
+              setSelectedCategories(Array.from(new Set(saved)));
+            }
+          } catch { /* ignore */ }
+        }
+      }
+    })();
+  }, [groupId]);
+
+  const filtered = useMemo(
+    () => categories.filter(c => c.toLowerCase().includes(search.toLowerCase())),
+    [categories, search]
+  );
+
   const toggleCategory = (category: string) => {
-    setSelectedCategories((prev) =>
-      prev.includes(category)
-        ? prev.filter((cat) => cat !== category)
-        : [...prev, category]
+    setSelectedCategories(prev =>
+      prev.includes(category) ? prev.filter(cat => cat !== category) : [...prev, category]
     );
   };
 
-  const chooseRandomCategories = () => {
+  const chooseRandomCategories = (n = 4) => {
     const shuffled = [...categories].sort(() => 0.5 - Math.random());
-    const randomSelection = shuffled.slice(0, 4);
-    setSelectedCategories(randomSelection);
+    setSelectedCategories(Array.from(new Set(shuffled.slice(0, n))));
   };
 
   const addCategory = () => {
-    if (newCategory && !categories.includes(newCategory)) {
-      setCategories((prev) => [...prev, newCategory]);
-      setNewCategory("");
-      setIsAddingCategory(false);
-    }
+    const c = newCategory.trim();
+    if (!c) return;
+    // evita duplicati case-insensitive
+    const exists = categories.some(x => x.toLowerCase() === c.toLowerCase());
+    if (!exists) setCategories(prev => [...prev, c]);
+    setNewCategory("");
+    setIsAddingCategory(false);
   };
 
   const handleConfirm = async () => {
@@ -59,23 +104,40 @@ const Step2Page = () => {
     try {
       setSaving(true);
       setError(null);
-      const res = await fetch(`${API_BASE}/api/groups/${groupId}/categories`, {
+
+      // Tentativo 1: route prevista (da implementare nel gateway)
+      const res = await fetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/categories`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ categories: selectedCategories }),
       });
-      if (!res.ok) throw new Error(await res.text());
-      // Vai alla pagina di conferma
-      router.push(`/crea-gruppo/success?groupId=${encodeURIComponent(groupId)}`);
-    } catch (e) {
+
+      if (res.ok) {
+        // ok: route esistente
+        router.push(`/crea-gruppo/success?groupId=${encodeURIComponent(groupId)}`);
+        return;
+      }
+
+      // Se la route non esiste ancora nel tuo gateway mock (404),
+      // salva in localStorage come fallback, così il flusso continua.
+      if (res.status === 404) {
+        if (typeof window !== "undefined") {
+          localStorage.setItem(STORAGE_KEY(groupId), JSON.stringify(selectedCategories));
+        }
+        router.push(`/crea-gruppo/success?groupId=${encodeURIComponent(groupId)}&saved=local`);
+        return;
+      }
+
+      // altri errori dal server: mostra testo di risposta
+      const txt = await res.text().catch(() => "");
+      throw new Error(txt || `HTTP ${res.status}`);
+    } catch (e: any) {
       console.error(e);
-      setError("Errore nel salvataggio delle categorie.");
+      setError(e?.message || "Errore nel salvataggio delle categorie.");
     } finally {
       setSaving(false);
     }
   };
-
-  const isConfirmEnabled = selectedCategories.length > 0;
 
   return (
     <div className="page">
@@ -90,16 +152,10 @@ const Step2Page = () => {
       />
 
       <div className="toggleContainer">
-        <button
-          className="toggleButton active"
-          onClick={chooseRandomCategories}
-        >
+        <button className="toggleButton active" onClick={() => chooseRandomCategories(4)}>
           Choose Randomly
         </button>
-        <button
-          className="toggleButton"
-          onClick={() => setIsAddingCategory(true)}
-        >
+        <button className="toggleButton" onClick={() => setIsAddingCategory(true)}>
           Add a Category
         </button>
       </div>
@@ -112,6 +168,7 @@ const Step2Page = () => {
             value={newCategory}
             onChange={(e) => setNewCategory(e.target.value)}
             className="newCategoryInput"
+            onKeyDown={(e) => e.key === "Enter" && addCategory()}
           />
           <button className="addCategoryButton" onClick={addCategory}>
             Add
@@ -120,39 +177,48 @@ const Step2Page = () => {
       )}
 
       {error && (
-        <div style={{
-          background: "#ffecec", color: "#7a0b0b", border: "1px solid #f7c2c2",
-          padding: 8, borderRadius: 6, margin: "10px 0"
-        }}>
+        <div
+          style={{
+            background: "#ffecec",
+            color: "#7a0b0b",
+            border: "1px solid #f7c2c2",
+            padding: 8,
+            borderRadius: 6,
+            margin: "10px 0",
+          }}
+        >
           {error}
         </div>
       )}
 
       <div className={`grid ${gridVisible ? "fadeIn" : ""}`}>
-        {categories
-          .filter((cat) =>
-            cat.toLowerCase().includes(search.toLowerCase())
-          )
-          .map((cat) => (
+        {filtered.map((cat) => {
+          const selected = selectedCategories.includes(cat);
+          return (
             <div
               key={cat}
               onClick={() => toggleCategory(cat)}
-              className={`categoryBox ${
-                selectedCategories.includes(cat) ? "selected" : ""
-              }`}
+              className={`categoryBox ${selected ? "selected" : ""}`}
+              title={selected ? "Remove from selection" : "Add to selection"}
             >
               {cat}
             </div>
-          ))}
+          );
+        })}
       </div>
 
       <button
-        disabled={!isConfirmEnabled || saving}
-        className={`confirmButton ${isConfirmEnabled ? "activeConfirm" : ""}`}
+        disabled={!confirmEnabled}
+        className={`confirmButton ${confirmEnabled ? "activeConfirm" : ""}`}
         onClick={handleConfirm}
       >
         {saving ? "Saving…" : "Confirm Choice"}
       </button>
+
+      <p style={{ marginTop: 10, fontSize: 12, color: "#888" }}>
+        Tip: questa pagina è già pronta per collegarsi al tuo API Gateway quando aggiungerai
+        la route <code>POST /api/groups/:groupId/categories</code>. Fino ad allora, salva in locale.
+      </p>
     </div>
   );
 };
