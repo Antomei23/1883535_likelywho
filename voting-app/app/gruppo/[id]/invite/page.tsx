@@ -29,7 +29,7 @@ export default function InvitePlayersPage({ params }: { params: Promise<Params> 
     (async () => {
       try {
         const m = await getGroupMembers(id);
-        if (live) setGroupMembers(m);
+        if (live) setGroupMembers(m.members);
       } catch (e) {
         console.error(e);
       }

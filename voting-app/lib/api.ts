@@ -14,7 +14,7 @@ export const API_BASE = resolveApiBase();
 /* =========================
  * Types usati dal frontend
  * ========================= */
-export type Member = { id: string; name: string; avatarUrl?: string };
+export type Member = { id: string; name: string; avatarUrl?: string | null};
 export type Group = {
   id: string;
   name: string;
@@ -51,7 +51,12 @@ export type UserScores = {
   totalPoints: number;
   groupPoints: Array<{ groupId: string; groupName: string; points: number }>;
 };
+export type InviteMembersPayload = {
+  userIds?: string[];     
+  emails?: string[];     
+};
 
+export type ApiError = { error: string; code?: string; status?: number };
 /** Aggiunto: profilo utente, coerente con l'API gateway */
 export interface UserProfile {
   id: string;
@@ -112,6 +117,22 @@ export async function getGroupMembers(groupId: string): Promise<{ members: Membe
 export async function getLeaderboard(groupId: string): Promise<LeaderboardResponse> {
   const r = await fetch(`${API_BASE}/api/groups/${groupId}/leaderboard`, { cache: "no-store" });
   return j(r);
+}
+export async function inviteMembers(
+  groupId: string,
+  payload: InviteMembersPayload
+): Promise<{ ok: true; invitations?: number }> {
+  const res = await fetch(`${API_BASE}/api/groups/${groupId}/invitations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+
+  return res.json();
 }
 
 /* =========================================================
