@@ -37,13 +37,15 @@ export default function VotingPage({
     let active = true;
     (async () => {
       try {
-        const [m, pq] = await Promise.all([
+        const [mRes, pq] = await Promise.all([
           getGroupMembers(groupId),
           getPendingQuestion(groupId, currentUserId),
         ]);
         if (!active) return;
 
-        setMembers(m);
+        // FIX: getGroupMembers ritorna { members: Member[] }
+        setMembers(mRes.members);
+
         if (pq.hasPending && pq.question && pq.question.id === questionId) {
           setQuestionText(pq.question.text);
           setDeadline(new Date(pq.question.deadline));
@@ -55,7 +57,9 @@ export default function VotingPage({
         setQuestionText("Failed to load question.");
       }
     })();
-    return () => { active = false; };
+    return () => {
+      active = false;
+    };
   }, [groupId, questionId, currentUserId]);
 
   const disabledIfSelf = (id: string) => !selfVoting && id === currentUserId;
@@ -80,9 +84,13 @@ export default function VotingPage({
   return (
     <div style={styles.page}>
       <div style={styles.header}>
-        <Link href={`/gruppo/${groupId}`} style={styles.menuButton}>←</Link>
+        <Link href={`/gruppo/${groupId}`} style={styles.menuButton}>
+          ←
+        </Link>
         <div />
-        <Link href="/profile" style={styles.userButton}>👤</Link>
+        <Link href="/profile" style={styles.userButton}>
+          👤
+        </Link>
       </div>
 
       <div style={styles.content}>
@@ -120,7 +128,8 @@ export default function VotingPage({
             disabled={!selected || submitting}
             style={{
               ...styles.actionButtonGreen,
-              width: "100%", marginTop: 16,
+              width: "100%",
+              marginTop: 16,
               opacity: selected && !submitting ? 1 : 0.6,
               cursor: selected && !submitting ? "pointer" : "not-allowed",
             }}
@@ -134,17 +143,64 @@ export default function VotingPage({
 }
 
 const styles: { [k: string]: React.CSSProperties } = {
-  page: { fontFamily: "Inter, sans-serif", backgroundColor: "#f5f6f8", minHeight: "100vh", color: "#333" },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center",
-    padding: "16px 24px", backgroundColor: "#fff", boxShadow: "0 4px 6px rgba(0,0,0,.1)", position: "sticky", top: 0, zIndex: 10 },
+  page: {
+    fontFamily: "Inter, sans-serif",
+    backgroundColor: "#f5f6f8",
+    minHeight: "100vh",
+    color: "#333",
+  },
+  header: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "16px 24px",
+    backgroundColor: "#fff",
+    boxShadow: "0 4px 6px rgba(0,0,0,.1)",
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+  },
   menuButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   userButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   content: { padding: 24, maxWidth: 420, margin: "0 auto" },
-  card: { backgroundColor: "#fff", padding: 16, borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,.05)" },
+  card: {
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 10,
+    boxShadow: "0 4px 12px rgba(0,0,0,.05)",
+  },
   h2: { margin: 0, fontSize: 20 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(2, minmax(0,1fr))", gap: 12, marginTop: 12 },
-  memberBtn: { padding: 14, borderRadius: 10, border: "1px solid #a9c4ff", background: "#cfe1ff", fontWeight: 600, cursor: "pointer" },
-  memberBtnActive: { background: "#f7a53a", borderColor: "#f7a53a", color: "#1a1a1a" },
-  memberBtnDisabled: { background: "#e9ecef", color: "#9aa0a6", borderColor: "#e9ecef", cursor: "not-allowed" },
-  actionButtonGreen: { backgroundColor: "#4CAF50", color: "#fff", padding: "12px 18px", borderRadius: 8, border: "none", fontWeight: 700 },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0,1fr))",
+    gap: 12,
+    marginTop: 12,
+  },
+  memberBtn: {
+    padding: 14,
+    borderRadius: 10,
+    border: "1px solid #a9c4ff",
+    background: "#cfe1ff",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
+  memberBtnActive: {
+    background: "#f7a53a",
+    borderColor: "#f7a53a",
+    color: "#1a1a1a",
+  },
+  memberBtnDisabled: {
+    background: "#e9ecef",
+    color: "#9aa0a6",
+    borderColor: "#e9ecef",
+    cursor: "not-allowed",
+  },
+  actionButtonGreen: {
+    backgroundColor: "#4CAF50",
+    color: "#fff",
+    padding: "12px 18px",
+    borderRadius: 8,
+    border: "none",
+    fontWeight: 700,
+  },
 };
