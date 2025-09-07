@@ -75,10 +75,11 @@ services:
       dockerfile: api-gateway/Dockerfile
     container_name: api-gateway
     ports:
-      - "3010:8080"
+      - "8080:8080"
     depends_on:
       - user-service
       - question-service
+      - auth-service
       - voting-service
       - notification-service
     networks: [app]

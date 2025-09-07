@@ -4,6 +4,13 @@ import { z } from 'zod';
 
 const app = express();
 app.use(express.json());
+
+// Middleware per loggare tutte le richieste
+app.use((req, _res, next) => {
+  console.log(`[${req.method}] ${req.url}`, req.body || {});
+  next();
+});
+
 const prisma = new PrismaClient();
 
 app.get('/health', (_req: Request, res: Response) => {
