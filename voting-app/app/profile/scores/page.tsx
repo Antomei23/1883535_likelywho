@@ -9,15 +9,19 @@ export default function ScoresPage() {
   const [scores, setScores] = useState<UserScores | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    (async () => {
-      const res = await getUserScores(getCurrentUserId());
-      if ("ok" in res && res.ok) {
-        setScores({ totalPoints: res.totalPoints, groupPoints: res.groupPoints });
-      }
-      setLoading(false);
-    })();
-  }, []);
+useEffect(() => {
+  (async () => {
+    const res = await getUserScores(getCurrentUserId());
+    if ("error" in res) {
+      console.error(res.error);
+      setScores({ totalPoints: 0, groupPoints: [] }); // oppure lascia null e gestisci UI
+    } else {
+      // res è UserScores qui, quindi ha totalPoints e groupPoints
+      setScores(res);
+    }
+    setLoading(false);
+  })();
+}, []);
 
   const total = scores?.totalPoints ?? 0;
 
