@@ -25,6 +25,7 @@ export type Group = {
   categories?: string[];
 };
 
+
 export type LeaderboardEntry = { userId: string; name: string; points: number };
 export type LeaderboardResponse = {
   questionText: string;
@@ -47,10 +48,13 @@ export type InviteResponse = { ok: boolean; code?: string; error?: string };
 export type JoinByCodeResponse = { ok: boolean; groupId?: string; groupName?: string; error?: string };
 
 export type UserScores = {
-  ok: boolean;
   totalPoints: number;
   groupPoints: Array<{ groupId: string; groupName: string; points: number }>;
 };
+
+export type UpdateProfilePayload = Partial<
+  Pick<UserProfile, "username" | "email" | "firstName" | "lastName" | "avatarUrl">
+>;
 export type InviteMembersPayload = {
   userIds?: string[];     
   emails?: string[];     
@@ -67,7 +71,8 @@ export interface UserProfile {
   avatarUrl: string;
   createdAt?: string;
 }
-
+export type ApiOk = { ok: true };
+export type ApiErr = { ok: false; error: string };
 /* =========================
  * Helper JSON
  * ========================= */
@@ -78,6 +83,17 @@ async function j<T>(r: Response): Promise<T> {
     throw new Error(msg);
   }
   return data as T;
+}
+/* =========================
+ * Helpers
+ * ========================= */
+async function asJson<T = any>(r: Response): Promise<T> {
+  const txt = await r.text();
+  try {
+    return JSON.parse(txt);
+  } catch {
+    return txt as any;
+  }
 }
 
 /* =========================================================
@@ -207,78 +223,79 @@ export async function joinGroupByCode(payload: {
 /* =========================================================
  * USER SCORES (già presente nel tuo file)
  * ========================================================= */
-export async function getUserScores(
-  userId: string
-): Promise<{ ok: boolean; totalPoints: number; groupPoints: UserScores["groupPoints"] }> {
-  const r = await fetch(`${API_BASE}/api/users/${userId}/scores`, { cache: "no-store" });
-  return j(r);
+// ---- Scores (ritorna il payload "snello" atteso dalle pagine)
+export async function getUserScores(userId: string): Promise<UserScores | ApiErr> {
+  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/scores`, {
+    cache: "no-store",
+  });
+  const data = await asJson<{ ok: boolean; totalPoints?: number; groupPoints?: any; error?: string }>(r);
+  if (!data || (data as any).ok === false) {
+    return { ok: false, error: (data as any)?.error || "Unable to fetch scores" } as ApiErr;
+  }
+  return {
+    totalPoints: data.totalPoints ?? 0,
+    groupPoints: data.groupPoints ?? [],
+  };
 }
 
 /* =========================================================
  * DELETE ACCOUNT (già presente nel tuo file)
  * ========================================================= */
-export async function deleteAccount(userId: string): Promise<{ ok: boolean; error?: string }> {
-  const r = await fetch(`${API_BASE}/api/users/${userId}`, {
+export async function deleteAccount(userId: string): Promise<ApiOk | ApiErr> {
+  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
     method: "DELETE",
     cache: "no-store",
   });
-  return j(r);
+  return asJson(r);
 }
 
 /* =========================================================
  * Aggiunte per /app/profile/page.tsx
  * ========================================================= */
 
-/** Ritorna l'userId dall'archiviazione locale; fallback mock "u7" per permettere sviluppo locale. */
+/** ID utente dal localStorage (compatibile con le tue pagine). */
 export function getCurrentUserId(): string {
-  if (typeof window === "undefined") return "u7";
-  const saved = window.localStorage.getItem("userId");
-  if (saved && saved.trim().length > 0) return saved;
-  window.localStorage.setItem("userId", "u7");
-  return "u7";
+  if (typeof window === "undefined") return "";
+  return localStorage.getItem("userId") || "";
 }
 
-/** GET profilo utente */
-export async function getProfile(
+// ---- Profile (nuovi nomi)
+export async function getUserProfile(
   userId: string
-): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
-  try {
-    const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, { cache: "no-store" });
-    const data = await r.json();
-    if (!r.ok || data?.ok === false) return { ok: false, error: data?.error ?? `HTTP ${r.status}` };
-    return { ok: true, profile: data.profile as UserProfile };
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? "Network error" };
-  }
+): Promise<{ ok: true; profile: UserProfile } | ApiErr> {
+  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
+    cache: "no-store",
+  });
+  return asJson(r);
 }
 
 /** PUT profilo utente */
-export async function updateProfile(
+export async function updateUserProfile(
   userId: string,
-  payload: Partial<Pick<UserProfile, "username" | "email" | "firstName" | "lastName" | "avatarUrl">>
-): Promise<{ ok: true; profile: UserProfile } | { ok: false; error: string }> {
-  try {
-    const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
-      method: "PUT",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const data = await r.json();
-    if (!r.ok || data?.ok === false) return { ok: false, error: data?.error ?? `HTTP ${r.status}` };
-    return { ok: true, profile: data.profile as UserProfile };
-  } catch (e: any) {
-    return { ok: false, error: e?.message ?? "Network error" };
-  }
+  payload: UpdateProfilePayload
+): Promise<{ ok: true; profile: UserProfile } | ApiErr> {
+  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
+    method: "PUT",
+    cache: "no-store",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return asJson(r);
 }
 
-/** (Opzionale) reset password usato dalla pagina /resetpsw */
-export async function resetPassword(email: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
+// ---- Reset password
+export async function resetPassword(email: string, newPassword: string): Promise<ApiOk | ApiErr> {
   const r = await fetch(`${API_BASE}/api/users/reset-password`, {
     method: "POST",
     cache: "no-store",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, newPassword }),
   });
-  return j(r);
+  return asJson(r);
 }
+
+/* =========================
+ * Alias compatibilità con import esistenti
+ * ========================= */
+export const getProfile = getUserProfile;       // compatibile con /profile/page.tsx
+export const updateProfile = updateUserProfile; // compatibile con /profile/page.tsx

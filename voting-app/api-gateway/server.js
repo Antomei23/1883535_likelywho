@@ -1,6 +1,7 @@
 // voting-app/api-gateway/server.js
 const express = require("express");
 const cors = require("cors");
+const fetch = require("node-fetch");
 
 const app = express();
 app.use(cors());
@@ -233,83 +234,71 @@ app.post("/api/votes", (req, res) => {
 // ===================================================================
 // User-Service: profilo / reset / scores / delete
 // ===================================================================
-app.post("/api/users/reset-password", (req, res) => {
-  const { email, newPassword } = req.body || {};
-  if (!email || !newPassword) return res.status(400).json({ ok: false, error: "Missing email or newPassword" });
-  const user = Object.values(mockUsers).find((u) => u.email === email);
-  if (!user) {
-    passwordResetRequests.push({ email, newPassword: "********", requestedAt: new Date().toISOString() });
-    return res.json({ ok: true, message: "If the email exists, a reset will be processed." });
+const USER_SVC = process.env.USER_SERVICE_BASE || "http://user-service:4001";
+
+// Reset password
+app.post("/api/users/reset-password", async (req, res) => {
+  try {
+    const resp = await fetch(`${USER_SVC}/api/users/reset-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body || {}),
+    });
+    const data = await resp.json();
+    return res.status(resp.status).json(data);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "user-service unreachable" });
   }
-  user.password = newPassword;
-  passwordResetRequests.push({ email, newPassword: "********", requestedAt: new Date().toISOString() });
-  res.json({ ok: true });
 });
 
-app.get("/api/users/:userId/profile", (req, res) => {
-  const u = mockUsers[req.params.userId];
-  if (!u) return res.status(404).json({ ok: false, error: "User not found" });
-  const profile = {
-    id: u.id, username: u.username, email: u.email,
-    firstName: u.firstName || "", lastName: u.lastName || "",
-    avatarUrl: u.avatarUrl || "", createdAt: u.createdAt,
-  };
-  res.json({ ok: true, profile });
-});
 
-app.put("/api/users/:userId/profile", (req, res) => {
-  const { userId } = req.params;
-  const u = mockUsers[userId];
-  if (!u) return res.status(404).json({ ok: false, error: "User not found" });
-  const { username, email, firstName, lastName, avatarUrl } = req.body || {};
-  if (email && Object.values(mockUsers).some((x) => x.email === email && x.id !== userId)) {
-    return res.status(409).json({ ok: false, error: "Email already used" });
+// Get profilo
+app.get("/api/users/:userId/profile", async (req, res) => {
+  try {
+    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}/profile`);
+    const data = await resp.json();
+    return res.status(resp.status).json(data);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "user-service unreachable" });
   }
-  if (username !== undefined) u.username = username;
-  if (email !== undefined) u.email = email;
-  if (firstName !== undefined) u.firstName = firstName;
-  if (lastName !== undefined) u.lastName = lastName;
-  if (avatarUrl !== undefined) u.avatarUrl = avatarUrl;
-
-  res.json({ ok: true, profile: {
-    id: u.id, username: u.username, email: u.email,
-    firstName: u.firstName || "", lastName: u.lastName || "",
-    avatarUrl: u.avatarUrl || "", createdAt: u.createdAt,
-  }});
 });
 
-app.delete("/api/users/:userId", (req, res) => {
-  const { userId } = req.params;
-  const u = mockUsers[userId];
-  if (!u) return res.status(404).json({ ok: false, error: "User not found" });
-
-  Object.values(mockGroups).forEach((g) => {
-    g.members = g.members.filter((m) => m.id !== userId);
-    if (g.points[userId] !== undefined) delete g.points[userId];
-    if (g.leader?.id === userId) {
-      const newLeader = g.members[0] || null;
-      g.leader = newLeader ? { id: newLeader.id, name: newLeader.name } : null;
-    }
-  });
-
-  delete mockUsers[userId];
-  res.json({ ok: true });
+// Update profilo
+app.put("/api/users/:userId/profile", async (req, res) => {
+  try {
+    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}/profile`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body || {}),
+    });
+    const data = await resp.json();
+    return res.status(resp.status).json(data);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "user-service unreachable" });
+  }
 });
 
-app.get("/api/users/:userId/scores", (req, res) => {
-  const { userId } = req.params;
-  let groupPoints = [];
-  let total = 0;
-  Object.values(mockGroups).forEach((g) => {
-    const pts = Number(g.points[userId] ?? 0);
-    const isMember = g.members.some((m) => m.id === userId);
-    if (isMember || pts > 0) {
-      groupPoints.push({ groupId: g.id, groupName: g.name, points: pts });
-      total += pts;
-    }
-  });
-  groupPoints.sort((a, b) => b.points - a.points);
-  res.json({ ok: true, totalPoints: total, groupPoints });
+
+// Delete account
+app.delete("/api/users/:userId", async (req, res) => {
+  try {
+    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}`, { method: "DELETE" });
+    const data = await resp.json();
+    return res.status(resp.status).json(data);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "user-service unreachable" });
+  }
+});
+
+// Scores (totale + per gruppo)
+app.get("/api/users/:userId/scores", async (req, res) => {
+  try {
+    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}/scores`);
+    const data = await resp.json();
+    return res.status(resp.status).json(data);
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "user-service unreachable" });
+  }
 });
 
 // ===================================================================
