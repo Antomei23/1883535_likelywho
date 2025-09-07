@@ -1,11 +1,45 @@
 // voting-app/api-gateway/server.js
 const express = require("express");
 const cors = require("cors");
-const fetch = require("node-fetch");
+const { createProxyMiddleware } = require("http-proxy-middleware");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// ======== PROXY VERSO user-service ========
+const USER_SVC = process.env.USER_SERVICE_BASE || "http://user-service:4001";
+console.log(`[Gateway] Proxy /api/users/*  ->  ${USER_SVC}`);
+
+app.use(
+  "/api/users",
+  createProxyMiddleware({
+    target: USER_SVC,
+    changeOrigin: true,
+    xfwd: true,
+    logLevel: "info",
+    proxyTimeout: 30000,
+    timeout: 30000,
+    onProxyReq(proxyReq, req) {
+      // Re-inoltra il body JSON (necessario perché usi express.json())
+      if (
+        req.method !== "GET" &&
+        req.method !== "HEAD" &&
+        req.body &&
+        Object.keys(req.body).length
+      ) {
+        const bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader("Content-Type", "application/json");
+        proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
+      }
+    },
+    onError(err, req, res) {
+      console.error("[Gateway→user-service] proxy error:", err.message);
+      res.status(502).json({ ok: false, error: "user-service unreachable" });
+    },
+  })
+);
 
 // -----------------------------
 // Helpers
@@ -231,75 +265,6 @@ app.post("/api/votes", (req, res) => {
   res.json({ ok: true });
 });
 
-// ===================================================================
-// User-Service: profilo / reset / scores / delete
-// ===================================================================
-const USER_SVC = process.env.USER_SERVICE_BASE || "http://user-service:4001";
-
-// Reset password
-app.post("/api/users/reset-password", async (req, res) => {
-  try {
-    const resp = await fetch(`${USER_SVC}/api/users/reset-password`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body || {}),
-    });
-    const data = await resp.json();
-    return res.status(resp.status).json(data);
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "user-service unreachable" });
-  }
-});
-
-
-// Get profilo
-app.get("/api/users/:userId/profile", async (req, res) => {
-  try {
-    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}/profile`);
-    const data = await resp.json();
-    return res.status(resp.status).json(data);
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "user-service unreachable" });
-  }
-});
-
-// Update profilo
-app.put("/api/users/:userId/profile", async (req, res) => {
-  try {
-    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}/profile`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(req.body || {}),
-    });
-    const data = await resp.json();
-    return res.status(resp.status).json(data);
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "user-service unreachable" });
-  }
-});
-
-
-// Delete account
-app.delete("/api/users/:userId", async (req, res) => {
-  try {
-    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}`, { method: "DELETE" });
-    const data = await resp.json();
-    return res.status(resp.status).json(data);
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "user-service unreachable" });
-  }
-});
-
-// Scores (totale + per gruppo)
-app.get("/api/users/:userId/scores", async (req, res) => {
-  try {
-    const resp = await fetch(`${USER_SVC}/api/users/${req.params.userId}/scores`);
-    const data = await resp.json();
-    return res.status(resp.status).json(data);
-  } catch (e) {
-    return res.status(500).json({ ok: false, error: "user-service unreachable" });
-  }
-});
 
 // ===================================================================
 // Invites: create + notify + join by code
