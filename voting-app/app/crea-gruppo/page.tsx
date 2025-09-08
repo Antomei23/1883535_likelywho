@@ -2,55 +2,58 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
-
-// TODO: sostituisci con l'utente reale dal tuo sistema di auth
-const CURRENT_USER_ID = "u7";
-const CURRENT_USER_NAME = "Riccardo";
+import { API_BASE, createGroup } from "@/lib/api";
 
 const CreaGruppoPage = () => {
   const router = useRouter();
   const [groupName, setGroupName] = useState("");
-  const [notificationTime, setNotificationTime] = useState("morning");
+  const [notificationTime, setNotificationTime] = useState<"morning" | "midday" | "afternoon" | "evening">("morning");
   const [disableSelfVote, setDisableSelfVote] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    if (!groupName.trim()) {
-      setError("Inserisci un nome per il gruppo.");
+  e.preventDefault();
+  setError(null);
+  if (!groupName.trim()) {
+    setError("Inserisci un nome per il gruppo.");
+    return;
+  }
+
+  try {
+    setSubmitting(true);
+
+    // Prendi il token dal localStorage
+    const token = localStorage.getItem("accessToken");
+    console.log("Token:", token); // <- controllo formato
+    if (!token) {
+      setError("Utente non autenticato.");
+      setSubmitting(false);
       return;
     }
 
-    try {
-      setSubmitting(true);
-      const res = await fetch(`${API_BASE}/api/groups`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: groupName.trim(),
-          leaderId: CURRENT_USER_ID,
-          leaderName: CURRENT_USER_NAME,
-          notificationTime,       // preferenza (mock)
-          disableSelfVote,        // preferenza (mock)
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json() as { ok: boolean; group: { id: string } };
-      if (!data?.ok || !data?.group?.id) throw new Error("Creazione gruppo fallita");
+    // Invia direttamente la richiesta con il token
+    const data = await createGroup({
+      name: groupName.trim(),
+      notificationTime,
+      disableSelfVote,
+    });
+    console.log("createGroup response:", data);
 
-      // Passo a Step 2 portandomi dietro il groupId
-      router.push(`/crea-gruppo/step2?groupId=${encodeURIComponent(data.group.id)}`);
-    } catch (err) {
-      console.error(err);
-      setError("Errore nella creazione del gruppo. Riprova.");
-    } finally {
-      setSubmitting(false);
+
+    if (!data?.ok || !data?.group?.id) {
+      throw new Error(data?.error || "Creazione gruppo fallita");
     }
-  };
+
+    router.push(`/crea-gruppo/step2?groupId=${encodeURIComponent(data.group.id)}`);
+  } catch (err) {
+    console.error(err);
+    setError("Errore nella creazione del gruppo. Riprova.");
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   return (
     <div style={styles.page}>
@@ -70,7 +73,7 @@ const CreaGruppoPage = () => {
         <label style={styles.label}>Notification time:</label>
         <select
           value={notificationTime}
-          onChange={(e) => setNotificationTime(e.target.value)}
+          onChange={(e) => setNotificationTime(e.target.value as any)}
           style={styles.select}
         >
           <option value="morning">Morning (7 AM)</option>

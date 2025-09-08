@@ -11,18 +11,29 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string>("");
 
+  // Carica profilo utente
   useEffect(() => {
     const userId = getCurrentUserId();
+    if (!userId) {
+      router.push("/login");
+      return;
+    }
+
     (async () => {
       const res = await getProfile(userId);
       if ("ok" in res && res.ok) {
-        setProfile(res.profile);
+        setProfile({
+          ...res.profile,
+          username: res.profile.username || "",
+          email: res.profile.email || "",
+          avatarUrl: res.profile.avatarUrl || "",
+        });
       } else {
         setError((res as any).error ?? "Unable to load profile");
       }
       setLoading(false);
     })();
-  }, []);
+  }, [router]);
 
   const onChange = (k: keyof UserProfile, v: string) => {
     if (!profile) return;
@@ -35,13 +46,16 @@ export default function ProfilePage() {
     const res = await updateProfile(profile.id, {
       username: profile.username,
       email: profile.email,
-      firstName: profile.firstName,
-      lastName: profile.lastName,
-      avatarUrl: profile.avatarUrl,
+      avatarUrl: profile.avatarUrl || "",
     });
     setSaving(false);
     if ("ok" in res && res.ok) {
-      setProfile(res.profile);
+      setProfile({
+        username: res.profile.username ?? profile.username,
+        email: res.profile.email ?? profile.email,
+        avatarUrl: res.profile.avatarUrl ?? profile.avatarUrl,
+        id: res.profile.id,
+      });
       alert("Profile saved");
     } else {
       alert((res as any).error ?? "Save failed");
@@ -51,9 +65,11 @@ export default function ProfilePage() {
   const goChangePassword = () => router.push("/resetpsw");
   const goScores = () => router.push("/profile/scores");
   const goDeleteAccount = () => router.push("/profile/delete-account");
+
   const handleLogout = () => {
     if (typeof window !== "undefined") {
-      localStorage.removeItem("token");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("currentUser");
       localStorage.removeItem("userId");
     }
     router.push("/login");
@@ -73,7 +89,6 @@ export default function ProfilePage() {
             style={{ width: "100%", height: "100%", borderRadius: "50%" }}
           />
         ) : (
-          // semplice icona utente fallback
           <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5zm0 2c-3.866 0-10 1.934-10 5v3h20v-3c0-3.066-6.134-5-10-5z" />
           </svg>
@@ -81,22 +96,6 @@ export default function ProfilePage() {
       </div>
 
       <div style={styles.infoBox}>
-        <div style={styles.row}>
-          <span style={styles.label}>First Name</span>
-          <input
-            style={styles.input}
-            value={profile.firstName}
-            onChange={(e) => onChange("firstName", e.target.value)}
-          />
-        </div>
-        <div style={styles.row}>
-          <span style={styles.label}>Last Name</span>
-          <input
-            style={styles.input}
-            value={profile.lastName}
-            onChange={(e) => onChange("lastName", e.target.value)}
-          />
-        </div>
         <div style={styles.row}>
           <span style={styles.label}>Username</span>
           <input

@@ -1,343 +1,269 @@
 // voting-app/api-gateway/server.js
 const express = require("express");
 const cors = require("cors");
-const { createProxyMiddleware } = require("http-proxy-middleware");
+const fetch = require("node-fetch"); // Node < 18, altrimenti fetch globale
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ======== PROXY VERSO user-service ========
-const USER_SVC = process.env.USER_SERVICE_BASE || "http://user-service:4001";
-console.log(`[Gateway] Proxy /api/users/*  ->  ${USER_SVC}`);
-
-app.use(
-  "/api/users",
-  createProxyMiddleware({
-    target: USER_SVC,
-    changeOrigin: true,
-    xfwd: true,
-    logLevel: "info",
-    proxyTimeout: 30000,
-    timeout: 30000,
-    onProxyReq(proxyReq, req) {
-      // Re-inoltra il body JSON (necessario perché usi express.json())
-      if (
-        req.method !== "GET" &&
-        req.method !== "HEAD" &&
-        req.body &&
-        Object.keys(req.body).length
-      ) {
-        const bodyData = JSON.stringify(req.body);
-        proxyReq.setHeader("Content-Type", "application/json");
-        proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
-        proxyReq.write(bodyData);
-      }
-    },
-    onError(err, req, res) {
-      console.error("[Gateway→user-service] proxy error:", err.message);
-      res.status(502).json({ ok: false, error: "user-service unreachable" });
-    },
-  })
-);
-
 // -----------------------------
-// Helpers
+// Config microservizi
 // -----------------------------
-function makeId(prefix = "g") {
-  return `${prefix}${Math.floor(Math.random() * 1e9).toString(36)}`;
-}
-function makeUserId() {
-  return `u${Math.floor(Math.random() * 1e9).toString(36)}`;
-}
-function makeInviteCode() {
-  // semplice codice 6/8 char
-  return Math.random().toString(36).slice(2, 8).toUpperCase();
-}
-
-// -----------------------------
-// MOCK USERS
-// -----------------------------
-const mockUsers = {
-  u7: {
-    id: "u7",
-    username: "Riccardo",
-    email: "ric@example.com",
-    password: "pass123",
-    firstName: "Riccardo",
-    lastName: "Tora",
-    avatarUrl: "",
-    createdAt: new Date().toISOString(),
-  },
-};
-
-const passwordResetRequests = []; // { email, newPassword, requestedAt }
-
-// -----------------------------
-// Auth minimal (register/login)
-// -----------------------------
-app.post("/api/auth/register", (req, res) => {
-  const { username, email, password, firstName = "", lastName = "" } = req.body || {};
-  if (!username || !email || !password) {
-    return res.status(400).json({ ok: false, error: "Missing fields" });
-  }
-  const exists = Object.values(mockUsers).some((u) => u.email === email);
-  if (exists) return res.status(409).json({ ok: false, error: "Email already used" });
-
-  const id = makeUserId();
-  mockUsers[id] = {
-    id, username, email, password, firstName, lastName, avatarUrl: "", createdAt: new Date().toISOString(),
-  };
-  return res.status(201).json({ ok: true, user: { id, username, email, firstName, lastName, avatarUrl: "" } });
-});
-
-app.post("/api/auth/login", (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ ok: false, error: "Missing fields" });
-  const user = Object.values(mockUsers).find((u) => u.email === email && u.password === password);
-  if (!user) return res.status(401).json({ ok: false, error: "Invalid credentials" });
-  const token = `mock-token-${user.id}-${Date.now()}`;
-  return res.json({ ok: true, user: { id: user.id, username: user.username, email: user.email }, token });
-});
-
-// -----------------------------
-// MOCK GROUPS & QUESTIONS
-// -----------------------------
-const mockGroups = {
-  g1: {
-    id: "g1",
-    name: "FunGroup",
-    leader: { id: "u1", name: "Mario" },
-    members: [
-      { id: "u1", name: "Mario" },
-      { id: "u2", name: "Eva" },
-      { id: "u7", name: "Riccardo" },
-      { id: "u8", name: "Sandra" },
-    ],
-    points: { u1: 3, u2: 5, u7: 2, u8: 1 },
-    settings: { notificationTime: "morning", disableSelfVote: false },
-    categories: ["Game", "Music", "Food"],
-  },
-  g2: {
-    id: "g2",
-    name: "Weekend Warriors",
-    leader: { id: "u9", name: "Luca" },
-    members: [
-      { id: "u9", name: "Luca" },
-      { id: "u10", name: "Giulia" },
-      { id: "u11", name: "Paolo" },
-    ],
-    points: { u9: 1, u10: 2, u11: 0 },
-    settings: { notificationTime: "evening", disableSelfVote: true },
-    categories: ["Sport", "Films"],
-  },
-  g3: {
-    id: "g3",
-    name: "Office Legends",
-    leader: { id: "u12", name: "Sara" },
-    members: [
-      { id: "u12", name: "Sara" },
-      { id: "u13", name: "Enzo" },
-    ],
-    points: { u12: 4, u13: 4 },
-    settings: { notificationTime: "afternoon", disableSelfVote: false },
-    categories: ["Culture", "Book"],
-  },
-};
-
-let mockQuestions = {
-  g1: {
-    id: "q99",
-    text: "Who is most likely to win a swimming competition?",
-    createdAt: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-    deadline: new Date(Date.now() + 1000 * 60 * 60 * 23).toISOString(),
-    answeredBy: new Set(),
-    votedLog: [],
-  },
+const SERVICES = {
+  USER: "http://user-service:4001",
+  AUTH: "http://auth-service:4000",
+  QUESTION: "http://question-service:4002",
+  VOTING: "http://voting-service:4003",
+  NOTIFICATION: "http://notification-service:4004",
 };
 
 // -----------------------------
-// INVITES (codes) + "notifications" mock
+// HEALTH
 // -----------------------------
-const inviteCodes = new Map(); // code -> { groupId, createdAt, createdBy? }
-inviteCodes.set("TEST42", { groupId: "g3", createdAt: new Date().toISOString() });
-const notificationOutbox = []; // mock outbox: { to, channel, payload, createdAt }
-
-// -----------------------------
-// Groups - LIST/CREATE/READ/MEMBERS/LEADERBOARD
-// -----------------------------
-app.get("/api/groups", (req, res) => {
-  const arr = Object.values(mockGroups).map((g) => ({ id: g.id, name: g.name }));
-  res.json(arr);
-});
-
-app.post("/api/groups", (req, res) => {
-  const { name, leaderId, leaderName, notificationTime, disableSelfVote } = req.body || {};
-  if (!name || !leaderId) return res.status(400).json({ ok: false, error: "Missing name or leaderId" });
-  const id = makeId("g");
-  const group = {
-    id,
-    name,
-    leader: { id: leaderId, name: leaderName ?? leaderId },
-    members: [{ id: leaderId, name: leaderName ?? leaderId }],
-    points: { [leaderId]: 0 },
-    settings: { notificationTime: notificationTime ?? "morning", disableSelfVote: !!disableSelfVote },
-    categories: [],
-  };
-  mockGroups[id] = group;
-  res.status(201).json({ ok: true, group });
-});
-
-app.get("/api/groups/:groupId", (req, res) => {
-  const g = mockGroups[req.params.groupId];
-  if (!g) return res.status(404).json({ error: "Group not found" });
-  res.json(g);
-});
-
-app.get("/api/groups/:groupId/members", (req, res) => {
-  const g = mockGroups[req.params.groupId];
-  if (!g) return res.status(404).json({ error: "Group not found" });
-  res.json({ members: g.members });
-});
-
-app.get("/api/groups/:groupId/leaderboard", (req, res) => {
-  const { groupId } = req.params;
-  const g = mockGroups[groupId];
-  const q = mockQuestions[groupId];
-  if (!g) return res.status(404).json({ error: "Group not found" });
-
-  const entries = Object.entries(g.points)
-    .map(([userId, points]) => {
-      const m = g.members.find((x) => x.id === userId);
-      return { userId, name: m?.name ?? userId, points: Number(points) };
-    })
-    .sort((a, b) => b.points - a.points);
-
-  const votedNames = (q?.votedLog ?? []).map((v) => {
-    const m = g.members.find((x) => x.id === v.voterId);
-    return m?.name ?? v.voterId;
-  });
-
-  res.json({ questionText: q?.text ?? "No active question", voted: votedNames, entries });
+app.get("/health", (_req, res) => {
+  res.json({ ok: true, service: "api-gateway" });
 });
 
 // -----------------------------
-// Questions
+// AUTH
 // -----------------------------
-app.get("/api/groups/:groupId/pending-question", (req, res) => {
-  const { groupId } = req.params;
-  const { userId } = req.query;
-  const q = mockQuestions[groupId];
-  if (!q) return res.json({ hasPending: false });
+// api-gateway/server.js
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const { email, username, password } = req.body;
 
-  const expired = new Date(q.deadline).getTime() < Date.now();
-  const hasAnswered = q.answeredBy.has(userId);
-  const hasPending = !expired && !hasAnswered;
-  const safe = q && hasPending ? { id: q.id, text: q.text, createdAt: q.createdAt, deadline: q.deadline } : undefined;
-  res.json({ hasPending, question: safe });
-});
+    if (!email || !username || !password) {
+      return res.status(400).json({ ok: false, error: "Email, username e password richiesti" });
+    }
 
-app.post("/api/questions", (req, res) => {
-  const { groupId, text, expiresInHours = 24 } = req.body || {};
-  if (!groupId || !text) return res.status(400).json({ ok: false, error: "Missing fields" });
-  const qid = `q${Math.floor(Math.random() * 100000)}`;
-  mockQuestions[groupId] = {
-    id: qid,
-    text,
-    createdAt: new Date().toISOString(),
-    deadline: new Date(Date.now() + expiresInHours * 3600 * 1000).toISOString(),
-    answeredBy: new Set(),
-    votedLog: [],
-  };
-  res.json({ ok: true, questionId: qid });
-});
-
-app.post("/api/votes", (req, res) => {
-  const { groupId, questionId, voterId, votedUserId } = req.body;
-  const q = mockQuestions[groupId];
-  const g = mockGroups[groupId];
-  if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
-  if (!q || q.id !== questionId) return res.status(400).json({ ok: false, error: "Question not found" });
-
-  q.answeredBy.add(voterId);
-  q.votedLog.push({ voterId, votedUserId });
-  g.points[votedUserId] = (g.points[votedUserId] ?? 0) + 1;
-  res.json({ ok: true });
-});
-
-
-// ===================================================================
-// Invites: create + notify + join by code
-// ===================================================================
-
-// 1) Genera codice e "notifica" mock nella POST /invite
-app.post("/api/groups/:groupId/invite", (req, res) => {
-  const { groupId } = req.params;
-  const { userIds = [], emails = [] } = req.body || {};
-  const g = mockGroups[groupId];
-  if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
-
-  const code = makeInviteCode();
-  inviteCodes.set(code, { groupId, createdAt: new Date().toISOString() });
-
-  // Stub notifica: salva in outbox (qui poi collegherai notification-service)
-  const targets = [...userIds.map((id) => ({ type: "userId", to: id })), ...emails.map((e) => ({ type: "email", to: e }))];
-  targets.forEach((t) => {
-    notificationOutbox.push({
-      to: t.to,
-      channel: t.type === "email" ? "email" : "in-app",
-      payload: { type: "INVITE_CODE", code, groupId, groupName: g.name },
-      createdAt: new Date().toISOString(),
+    // 1️⃣ Creazione utente su user-service
+    const rUser = await fetch(`${SERVICES.USER}/users`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, name: username }),
     });
-  });
+    const user = await rUser.json();
+    if (!rUser.ok) return res.status(rUser.status).json(user);
 
-  console.log(`[MOCK] invite code ${code} for ${groupId}, sent to: ${targets.map(t=>t.to).join(", ")}`);
-  res.json({ ok: true, code });
-});
+    // 2️⃣ Creazione password su auth-service
+    const rPw = await fetch(`${SERVICES.AUTH}/passwords`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id, password }),
+    });
+    if (!rPw.ok) return res.status(rPw.status).json(await rPw.json());
 
-// 2) Join da codice
-app.post("/api/groups/join", (req, res) => {
-  const { code, userId, userName } = req.body || {};
-  if (!code || !userId) return res.status(400).json({ ok: false, error: "Missing code or userId" });
-  const info = inviteCodes.get(code.toUpperCase());
-  if (!info) return res.status(404).json({ ok: false, error: "Invalid or expired code" });
+    // 3️⃣ Token fittizio (per ora)
+    const token = `token-${user.id}-${Date.now()}`;
 
-  const g = mockGroups[info.groupId];
-  if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
-
-  const already = g.members.some((m) => m.id === userId);
-  if (!already) {
-    g.members.push({ id: userId, name: userName || userId });
-    g.points[userId] = g.points[userId] ?? 0;
+    res.status(201).json({ ok: true, user, token });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: err.message });
   }
+});
 
-  // (opzionale) invalidare codice singolo uso:
-  // inviteCodes.delete(code.toUpperCase());
 
-  //------------------------------------------------------------------------------
-  // Per il futuro, quando voglio far “sparire” il fallback, basta aggiungere la route:
-  // POST /api/groups/:groupId/categories
-/*app.post("/api/groups/:groupId/categories", (req, res) => {
-  const { groupId } = req.params;
-  const { categories } = req.body || {};
-  const g = mockGroups[groupId];
-  if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
-  if (!Array.isArray(categories) || categories.length === 0) {
-    return res.status(400).json({ ok: false, error: "categories must be a non-empty array" });
+app.post("/api/auth/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // Trova utente su user-service
+    const usersR = await fetch(`${SERVICES.USER}/users`);
+    const users = await usersR.json();
+    const user = users.find((u) => u.email === email);
+    if (!user) return res.status(401).json({ ok: false, error: "User not found" });
+
+    // Verifica password su auth-service
+    const authR = await fetch(`${SERVICES.AUTH}/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+    if (!authR.ok) return res.status(401).json({ ok: false, error: "Invalid credentials" });
+
+    // Token fittizio
+    const token = `token-${user.id}-${Date.now()}`;
+    res.json({ ok: true, user, token });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
   }
-  g.categories = Array.from(new Set(categories.map((c) => String(c).trim()).filter(Boolean)));
-  res.json({ ok: true, groupId, categories: g.categories });
-});
-*/
-//-----------------------------------------------------------------
-
-  res.json({ ok: true, groupId: g.id, groupName: g.name });
 });
 
-// ===================================================================
-// Boot
-// ===================================================================
+// Middleware per simulare autenticazione
+// Middleware per simulare autenticazione
+app.use((req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer token-")) {
+    const parts = authHeader.replace("Bearer ", "").split("-");
+    // token-userId-timestamp
+    const userIdParts = parts.slice(1, parts.length - 1);
+    req.userId = userIdParts.join("-"); // <-- adesso è l'ID corretto
+  }
+  next();
+});
+
+// -----------------------------
+// USERS
+// -----------------------------
+app.get("/api/users/:userId/profile", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}`);
+    const profile = await r.json();
+    // Aggiungi username, firstName, lastName se non presenti
+    res.json({ ok: true, profile: {
+      id: profile.id,
+      email: profile.email,
+      username: profile.name,      // o profile.username a seconda del DB
+      avatarUrl: profile.avatarUrl || null,
+    }});
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+app.put("/api/users/:userId/profile", async (req, res) => {
+  try {
+    const { username, avatarUrl } = req.body;
+
+    const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}/profile`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: username, avatarUrl }), // <-- manda name
+    });
+
+    const updated = await r.json();
+
+    res.json({
+      ok: true,
+      profile: {
+        id: updated.id,
+        email: updated.email,
+        username: updated.name, // <-- mappa name su username
+        avatarUrl: updated.avatarUrl || "",
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+// -----------------------------
+// GROUPS
+// -----------------------------
+app.get("/api/groups", async (_req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.USER}/groups`);
+    const data = await r.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/groups", async (req, res) => {
+  try {
+    console.log("Auth header:", req.headers.authorization);
+    console.log("UserId from middleware:", req.userId);
+    const leaderId = req.userId; // prendo ID dall'utente autenticato
+
+    if (!leaderId) return res.status(401).json({ ok: false, error: "Not authenticated" });
+
+    const r = await fetch(`${SERVICES.USER}/groups`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...req.body, leaderId }),
+    });
+    const group = await r.json();
+    console.log("user-service response:", group);
+    res.status(201).json({
+      ok: true,
+      group: group.group ?? group, // se user-service risponde { ok, group }, prendi solo group
+    });
+  } catch (err) {
+    console.log("Creating group with leaderId:", leaderId);
+    console.error(err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/groups/:groupId", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.USER}/groups/${req.params.groupId}`);
+    const group = await r.json();
+    if (!group) return res.status(404).json({ ok: false, error: "Group not found" });
+    res.json({ ok: true, group });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/api/groups/:groupId/members", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.USER}/groups/${req.params.groupId}/members`);
+    const data = await r.json();
+
+    // Normalizza in array
+    let members;
+    if (Array.isArray(data)) {
+      members = data;
+    } else if (Array.isArray(data.members)) {
+      members = data.members;
+    } else {
+      members = [];
+    }
+
+    res.json(members); // <-- manda direttamente l’array
+  } catch (err) {
+    res.status(500).json({ ok: false, error: "Errore membri" });
+  }
+});
+
+
+// Pending question di un gruppo
+app.get("/api/groups/:groupId/pending-question", async (req, res) => {
+  try {
+    const { groupId } = req.params;
+
+    // inoltra al question-service
+    const r = await fetch(`${SERVICES.QUESTION}/questions/active/${groupId}`);
+    const questions = await r.json();
+
+    // normalizza in formato atteso dal frontend (PendingQuestionResponse)
+    if (!Array.isArray(questions) || questions.length === 0) {
+      return res.json({ hasPending: false });
+    }
+
+    const q = questions[0]; // prendi la più recente
+    return res.json({ hasPending: true, question: q });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// POST nuova domanda
+app.post("/api/questions", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.QUESTION}/questions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+
+// -----------------------------
+// BOOT
+// -----------------------------
 const PORT = 8080;
-app.listen(PORT, () => {
-  console.log(`✅ API Gateway running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () => console.log(`✅ API Gateway running on http://localhost:${PORT}`));

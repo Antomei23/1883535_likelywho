@@ -41,7 +41,7 @@ export default function GroupPage({ params }: { params: Promise<Params> }) {
         } else {
           const mm = await getGroupMembers(id);
           if (!active) return;
-          setMembers(mm);
+          setMembers(mm.members ?? []);
         }
 
         const pq = await getPendingQuestion(id, currentUserId);

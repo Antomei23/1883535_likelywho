@@ -5,12 +5,11 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  // schema = "auth"  // se vuoi usare uno schema specifico
 }
 
 model Account {
   id             String   @id @default(uuid())
-  userId         String
+  userId         String   // solo riferimento logico a User nel user-service
   provider       String
   providerUserId String
   accessToken    String?
@@ -22,14 +21,14 @@ model Account {
 
 model Session {
   id        String   @id @default(uuid())
-  userId    String
+  userId    String   // riferimento logico, nessuna FK
   jwtId     String   @unique
   expiresAt DateTime
   createdAt DateTime @default(now())
 }
 
 model Password {
-  userId    String   @id
+  userId    String   @id   // riferimento logico a User
   hash      String
   updatedAt DateTime @updatedAt
 }

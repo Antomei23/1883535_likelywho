@@ -53,7 +53,7 @@ export type UserScores = {
 };
 
 export type UpdateProfilePayload = Partial<
-  Pick<UserProfile, "username" | "email" | "firstName" | "lastName" | "avatarUrl">
+  Pick<UserProfile, "username" | "email" | "avatarUrl">
 >;
 export type InviteMembersPayload = {
   userIds?: string[];     
@@ -66,8 +66,6 @@ export interface UserProfile {
   id: string;
   username: string;
   email: string;
-  firstName: string;
-  lastName: string;
   avatarUrl: string;
   createdAt?: string;
 }
@@ -109,21 +107,46 @@ export async function getGroup(groupId: string): Promise<Group> {
   return j<Group>(r);
 }
 
+// lib/api.ts (modifica solo la funzione createGroup)
+
 export async function createGroup(payload: {
   name: string;
-  leaderId: string;
-  leaderName?: string;
-  notificationTime?: "morning" | "afternoon" | "evening";
+  notificationTime?: "morning" | "afternoon" | "evening" | "midday";
   disableSelfVote?: boolean;
 }): Promise<{ ok: boolean; group?: Group; error?: string }> {
+
+  // Prendi token da localStorage
+  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  if (!token) {
+    return { ok: false, error: "Not authenticated" };
+  }
+
   const r = await fetch(`${API_BASE}/api/groups`, {
     method: "POST",
     cache: "no-store",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${token}`,
+    },
     body: JSON.stringify(payload),
   });
-  return j(r);
+
+  try {
+    const data = await r.json();
+    // Normalizza la risposta: se il gateway ritorna direttamente il gruppo, lo avvolgiamo in "group"
+    if ("id" in data) {
+      return { ok: true, group: data as Group };
+    }
+    return {
+      ok: data.ok ?? true,          // se manca 'ok', assume true
+      group: data.group ?? data,    // se 'group' non c’è, usa l’oggetto intero
+      error: data.error,
+    };
+  } catch (err) {
+    return { ok: false, error: "Failed to parse response" };
+  }
 }
+
 
 export async function getGroupMembers(groupId: string): Promise<{ members: Member[] }> {
   const r = await fetch(`${API_BASE}/api/groups/${groupId}/members`, { cache: "no-store" });
@@ -166,11 +189,17 @@ export async function createQuestion(payload: {
   text: string;
   expiresInHours?: number;
 }): Promise<{ ok: boolean; questionId?: string; error?: string }> {
+  const expiresAt = new Date(Date.now() + (payload.expiresInHours ?? 24) * 60 * 60 * 1000).toISOString();
+  
   const r = await fetch(`${API_BASE}/api/questions`, {
     method: "POST",
     cache: "no-store",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      groupId: payload.groupId,
+      text: payload.text,
+      expiresAt
+    }),
   });
   return j(r);
 }
@@ -256,8 +285,16 @@ export async function deleteAccount(userId: string): Promise<ApiOk | ApiErr> {
 /** ID utente dal localStorage (compatibile con le tue pagine). */
 export function getCurrentUserId(): string {
   if (typeof window === "undefined") return "";
-  return localStorage.getItem("userId") || "";
+  const userStr = localStorage.getItem("currentUser");
+  if (!userStr) return "";
+  try {
+    const user = JSON.parse(userStr);
+    return user.id || "";
+  } catch {
+    return "";
+  }
 }
+
 
 // ---- Profile (nuovi nomi)
 export async function getUserProfile(
@@ -293,6 +330,25 @@ export async function resetPassword(email: string, newPassword: string): Promise
   });
   return asJson(r);
 }
+
+export async function register(payload: { email: string; username?: string; password: string }): Promise<{ ok: true; user: any; token?: string } | ApiErr> {
+  const res = await fetch(`${API_BASE}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return asJson(res);
+}
+
+export async function login(email: string, password: string): Promise<{ ok: true; user: any; token: string } | ApiErr> {
+  const res = await fetch(`${API_BASE}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  return asJson(res);
+}
+
 
 /* =========================
  * Alias compatibilità con import esistenti
