@@ -4,7 +4,7 @@
 import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getGroupMembers, getPendingQuestion, sendVote, Member } from "@/lib/api";
+import { getCurrentUserId, getGroupMembers, getPendingQuestion, sendVote, Member } from "@/lib/api";
 
 type Params = { groupId: string; questionId: string };
 
@@ -25,8 +25,11 @@ export default function VotingPage({
   const searchParams = useSearchParams();
 
   // ✅ Leggi i parametri dall’URL con l’hook
-  const selfVoting = searchParams.get("selfVoting") === "true";
-  const currentUserId = searchParams.get("currentUserId") ?? "u7";
+  const search = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const selfVoting = search?.get("selfVoting") === "true";
+
+  const currentUserId = getCurrentUserId();;
+
 
   const [members, setMembers] = useState<Member[]>([]);
   const [questionText, setQuestionText] = useState<string>("Loading question…");
