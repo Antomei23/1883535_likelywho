@@ -131,19 +131,20 @@ export async function createGroup(payload: {
     body: JSON.stringify(payload),
   });
 
+  let data: any;
   try {
-    const data = await r.json();
-    // Normalizza la risposta: se il gateway ritorna direttamente il gruppo, lo avvolgiamo in "group"
-    if ("id" in data) {
-      return { ok: true, group: data as Group };
-    }
-    return {
-      ok: data.ok ?? true,          // se manca 'ok', assume true
-      group: data.group ?? data,    // se 'group' non c’è, usa l’oggetto intero
-      error: data.error,
-    };
+    data = await r.json();
   } catch (err) {
     return { ok: false, error: "Failed to parse response" };
+  }
+
+  // ✅ Normalizza sempre la risposta
+  if (data?.group && data.group.id) {
+    return { ok: true, group: data.group };
+  } else if (data?.id) {
+    return { ok: true, group: data as Group };
+  } else {
+    return { ok: false, error: data?.error ?? "No group returned" };
   }
 }
 

@@ -114,6 +114,7 @@ const Step2Page = () => {
 
       if (res.ok) {
         // ok: route esistente
+        console.log("Group ID:", groupId);
         router.push(`/crea-gruppo/success?groupId=${encodeURIComponent(groupId)}`);
         return;
       }

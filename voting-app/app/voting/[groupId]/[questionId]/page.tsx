@@ -1,9 +1,9 @@
 // voting-app/frontend/app/voting/[groupId]/[questionId]/page.tsx
 "use client";
 
-import React, { useState, useMemo, use as usePromise, useEffect } from "react";
+import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getGroupMembers, getPendingQuestion, sendVote, Member } from "@/lib/api";
 
 type Params = { groupId: string; questionId: string };
@@ -15,17 +15,18 @@ function hoursLeft(deadline: Date) {
 
 export default function VotingPage({
   params,
-  searchParams,
 }: {
-  params: Promise<Params>;
-  searchParams?: Record<string, string | string[] | undefined>;
+  params: Promise<{ groupId: string; questionId: string }>;
 }) {
-  const { groupId, questionId } = usePromise(params);
-  const router = useRouter();
+  const { groupId, questionId } = use(params); // ✅ unwrap dei param
+  console.log("🟢 Params:", { groupId, questionId });
 
-  // Recupero preferenze da query
-  const selfVoting = (searchParams?.selfVoting as string) === "true";
-  const currentUserId = (searchParams?.currentUserId as string) ?? "u7";
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // ✅ Leggi i parametri dall’URL con l’hook
+  const selfVoting = searchParams.get("selfVoting") === "true";
+  const currentUserId = searchParams.get("currentUserId") ?? "u7";
 
   const [members, setMembers] = useState<Member[]>([]);
   const [questionText, setQuestionText] = useState<string>("Loading question…");
@@ -43,8 +44,10 @@ export default function VotingPage({
         ]);
         if (!active) return;
 
-        // FIX: getGroupMembers ritorna { members: Member[] }
-        setMembers(mRes.members);
+        console.log("✅ Group members:", mRes?.members);
+        console.log("✅ Pending question response:", pq); // <-- log della domanda
+
+        setMembers(mRes?.members ?? []);
 
         if (pq.hasPending && pq.question && pq.question.id === questionId) {
           setQuestionText(pq.question.text);
@@ -68,8 +71,12 @@ export default function VotingPage({
     if (!selected) return;
     try {
       setSubmitting(true);
-      await sendVote({ groupId, questionId, voterId: currentUserId, votedUserId: selected });
-      // Dopo il voto: vai alle stats del gruppo
+      await sendVote({
+        groupId,
+        questionId,
+        voterId: currentUserId,
+        votedUserId: selected,
+      });
       router.replace(`/gruppo/${groupId}/stats`);
     } catch (e) {
       console.error(e);
@@ -103,24 +110,28 @@ export default function VotingPage({
           )}
 
           <div style={styles.grid}>
-            {members.map((m) => {
-              const isActive = selected === m.id;
-              const isDisabled = disabledIfSelf(m.id);
-              return (
-                <button
-                  key={m.id}
-                  disabled={isDisabled}
-                  onClick={() => setSelected(m.id)}
-                  style={{
-                    ...styles.memberBtn,
-                    ...(isActive ? styles.memberBtnActive : {}),
-                    ...(isDisabled ? styles.memberBtnDisabled : {}),
-                  }}
-                >
-                  {m.name}
-                </button>
-              );
-            })}
+            {members.length > 0 ? (
+              members.map((m) => {
+                const isActive = selected === m.id;
+                const isDisabled = disabledIfSelf(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    disabled={isDisabled}
+                    onClick={() => setSelected(m.id)}
+                    style={{
+                      ...styles.memberBtn,
+                      ...(isActive ? styles.memberBtnActive : {}),
+                      ...(isDisabled ? styles.memberBtnDisabled : {}),
+                    }}
+                  >
+                    {m.name}
+                  </button>
+                );
+              })
+            ) : (
+              <p style={{ color: "#888" }}>No members available</p>
+            )}
           </div>
 
           <button

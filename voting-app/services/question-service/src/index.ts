@@ -11,6 +11,7 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 app.post('/questions', async (req: Request, res: Response) => {
+  console.log('POST /questions body:', req.body);
   const schema = z.object({
     groupId: z.string().min(1),          // metti .uuid() se usi uuid per Group
     text: z.string().min(1),

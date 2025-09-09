@@ -75,6 +75,9 @@ app.post("/api/auth/login", async (req, res) => {
     const user = users.find((u) => u.email === email);
     if (!user) return res.status(401).json({ ok: false, error: "User not found" });
 
+    console.log("User logged in:", user.id);
+
+
     // Verifica password su auth-service
     const authR = await fetch(`${SERVICES.AUTH}/login`, {
       method: "POST",
@@ -181,7 +184,7 @@ app.post("/api/groups", async (req, res) => {
     console.log("user-service response:", group);
     res.status(201).json({
       ok: true,
-      group: group.group ?? group, // se user-service risponde { ok, group }, prendi solo group
+      group: group?.group ?? group, // se user-service risponde { ok, group }, prendi solo group
     });
   } catch (err) {
     console.log("Creating group with leaderId:", leaderId);
@@ -247,6 +250,7 @@ app.get("/api/groups/:groupId/pending-question", async (req, res) => {
 // POST nuova domanda
 app.post("/api/questions", async (req, res) => {
   try {
+    console.log("API Gateway POST /api/questions body:", req.body); 
     const r = await fetch(`${SERVICES.QUESTION}/questions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -13,6 +13,7 @@ const CreaGruppoPage = () => {
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
+
   e.preventDefault();
   setError(null);
   if (!groupName.trim()) {
@@ -39,6 +40,8 @@ const CreaGruppoPage = () => {
       disableSelfVote,
     });
     console.log("createGroup response:", data);
+    console.log("data.group:", data.group);
+    console.log("data.group.id:", data.group?.id);
 
 
     if (!data?.ok || !data?.group?.id) {

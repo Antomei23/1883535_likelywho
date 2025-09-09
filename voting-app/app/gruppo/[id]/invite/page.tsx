@@ -7,13 +7,6 @@ import { getGroupMembers, inviteMembers, Member } from "@/lib/api";
 type Params = { id: string };
 
 type Friend = { id: string; name: string };
-// quick-pick locale (in futuro potrai sostituirlo con /api/users/suggestions)
-const FRIENDS: Friend[] = [
-  { id: "u2", name: "Sara" },
-  { id: "u3", name: "Mario" },
-  { id: "u4", name: "Enzo" },
-  { id: "u5", name: "Luca" },
-];
 
 export default function InvitePlayersPage({ params }: { params: Promise<Params> }) {
   const { id } = usePromise(params);
@@ -82,32 +75,6 @@ export default function InvitePlayersPage({ params }: { params: Promise<Params> 
                 <button style={styles.copyBtn} onClick={() => navigator.clipboard?.writeText(inviteLink)}>📋 Copy</button>
               </div>
             </div>
-          </div>
-        </div>
-
-        {/* Add by quick-pick */}
-        <div style={styles.card}>
-          <div style={styles.label}>Quick add</div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
-            {FRIENDS.map((f) => {
-              const isAdded = !!addedIds[f.id];
-              const alreadyIn = groupMembers.some((m) => m.id === f.id);
-              return (
-                <button
-                  key={f.id}
-                  disabled={alreadyIn}
-                  onClick={() => toggleAdd(f)}
-                  style={{
-                    ...styles.friendChip,
-                    ...(isAdded ? styles.friendChipAdded : {}),
-                    ...(alreadyIn ? styles.friendChipDisabled : {}),
-                  }}
-                  title={alreadyIn ? "Già nel gruppo" : undefined}
-                >
-                  {f.name} {alreadyIn ? "🟢" : isAdded ? "✔" : "👤"}
-                </button>
-              );
-            })}
           </div>
         </div>
 
