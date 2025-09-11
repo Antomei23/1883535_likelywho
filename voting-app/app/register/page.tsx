@@ -24,8 +24,8 @@ const RegisterPage = () => {
       setError("Email non valida");
       return false;
     }
-    if (password.length < 10) {
-      setError("Password deve contenere almeno 10 caratteri");
+    if (password.length < 8) {
+      setError("Password deve contenere almeno 8 caratteri");
       return false;
     }
     if (password !== confirmPassword) {
@@ -45,7 +45,7 @@ const RegisterPage = () => {
     try {
       setSubmitting(true);
 
-      const res = await fetch(`${API_BASE}/api/auth/register`, {
+      const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

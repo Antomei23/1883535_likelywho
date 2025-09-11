@@ -1,5 +1,5 @@
 // voting-app/lib/api.ts
-
+/*
 function resolveApiBase() {
   // In SSR (Node dentro Docker) → usa il service name interno
   if (typeof window === "undefined") {
@@ -10,6 +10,19 @@ function resolveApiBase() {
 }
 
 export const API_BASE = resolveApiBase();
+*/
+const API_BASE   = process.env.NEXT_PUBLIC_API_BASE   ?? "http://localhost:8080/";
+const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
+
+function assertJsonResponse(res: Response) {
+  const ct = res.headers.get("content-type") || "";
+  if (!ct.includes("application/json")) {
+    return res.text().then(t => {
+      throw new Error(`HTTP ${res.status} ${res.statusText} – non-JSON: ${t.slice(0,200)}...`);
+    });
+  }
+  return res.json();
+}
 
 /* =========================
  * Types usati dal frontend
@@ -333,12 +346,12 @@ export async function resetPassword(email: string, newPassword: string): Promise
 }
 
 export async function register(payload: { email: string; username?: string; password: string }): Promise<{ ok: true; user: any; token?: string } | ApiErr> {
-  const res = await fetch(`${API_BASE}/api/auth/register`, {
+  const res = await fetch(`${API_BASE}${API_PREFIX}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return asJson(res);
+  return assertJsonResponse(res);
 }
 
 export async function login(email: string, password: string): Promise<{ ok: true; user: any; token: string } | ApiErr> {
