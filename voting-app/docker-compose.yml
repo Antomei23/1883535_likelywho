@@ -30,6 +30,8 @@ services:
     depends_on: [postgres]
     ports:
       - "4000:4000"
+    volumes:
+      - ./services/auth-service/prisma:/app/prisma
     networks: [app]
 
   user-service:
@@ -40,6 +42,8 @@ services:
     ports:
       - "4001:4001"
       - "5555:5555"
+    volumes:
+      - ./services/user-service/prisma:/app/prisma
     networks: [app]
 
   question-service:
@@ -49,6 +53,8 @@ services:
     depends_on: [postgres]
     ports:
       - "4002:4002"
+    volumes:
+      - ./services/question-service/prisma:/app/prisma
     networks: [app]
 
   voting-service:
@@ -58,6 +64,8 @@ services:
     depends_on: [postgres]
     ports:
       - "4003:4003"
+    volumes:
+      - ./services/voting-service/prisma:/app/prisma
     networks: [app]
 
   notification-service:
@@ -67,6 +75,8 @@ services:
     depends_on: [postgres]
     ports:
       - "4004:4004"
+    volumes:
+      - ./services/notification-service/prisma:/app/prisma
     networks: [app]
 
   api-gateway:

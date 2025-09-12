@@ -6,6 +6,7 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
   // schema = "notifications"  // opzionale, se vuoi usare uno schema specifico
+  shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Notification {
