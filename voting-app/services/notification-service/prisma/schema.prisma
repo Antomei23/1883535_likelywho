@@ -17,5 +17,11 @@ model Notification {
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
 
+  // riferimenti logici
+  groupId    String?
+  questionId String?
+
   @@index([userId, read])
+  @@index([groupId])
+  @@index([questionId])
 }
