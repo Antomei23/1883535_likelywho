@@ -45,7 +45,8 @@ const RegisterPage = () => {
     try {
       setSubmitting(true);
 
-      const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+      // const res = await fetch(`${API_BASE}/api/v1/auth/register`, {
+      const res = await fetch(`${API_BASE}/api/auth/register`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

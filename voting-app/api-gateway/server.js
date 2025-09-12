@@ -4,7 +4,8 @@ const cors = require("cors");
 const fetch = require("node-fetch"); // Node < 18, altrimenti fetch globale
 
 const app = express();
-app.use(cors());
+//  app.use(cors());
+app.use(cors({ origin: ["http://localhost:3000", "http://localhost:5173"], credentials: true }));
 app.use(express.json());
 
 // -----------------------------
@@ -25,38 +26,92 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "api-gateway" });
 });
 
+// AGGIUNTA!! 
+// Health per AUTH (inoltra a /health del servizio)
+app.get("/api/auth/health", async (_req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.AUTH}/health`);
+    const ct = r.headers.get("content-type") || "";
+    const body = await r.text();
+    // se il servizio risponde HTML, normalizza comunque a JSON
+    const data = ct.includes("application/json") ? JSON.parse(body) : { ok: r.ok, raw: body.slice(0, 120) };
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "auth-service unreachable", detail: err.message });
+  }
+});
+
+
 // -----------------------------
 // AUTH
 // -----------------------------
 // api-gateway/server.js
+
+// app.post("/api/auth/register", async (req, res) => {
+//   try {
+//     const { email, username, password } = req.body;
+
+//     if (!email || !username || !password) {
+//       return res.status(400).json({ ok: false, error: "Email, username e password richiesti" });
+//     }
+
+//     // 1️⃣ Creazione utente su user-service
+//     const rUser = await fetch(`${SERVICES.USER}/users`, {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({ email, name: username }),
+//     });
+//     const user = await rUser.json();
+//     if (!rUser.ok) return res.status(rUser.status).json(user);
+
+//     // 2️⃣ Creazione password su auth-service
+//     const rPw = await fetch(`${SERVICES.AUTH}/passwords`, {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({ userId: user.id, password }),
+//     });
+//     if (!rPw.ok) return res.status(rPw.status).json(await rPw.json());
+
+//     // 3️⃣ Token fittizio (per ora)
+//     const token = `token-${user.id}-${Date.now()}`;
+
+//     res.status(201).json({ ok: true, user, token });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ ok: false, error: err.message });
+//   }
+// });
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, username, password } = req.body;
-
     if (!email || !username || !password) {
       return res.status(400).json({ ok: false, error: "Email, username e password richiesti" });
     }
 
-    // 1️⃣ Creazione utente su user-service
+    // 1️⃣ users
     const rUser = await fetch(`${SERVICES.USER}/users`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, name: username }),
     });
-    const user = await rUser.json();
+    const userCt = rUser.headers.get("content-type") || "";
+    const userTxt = await rUser.text();
+    const user = userCt.includes("application/json") ? JSON.parse(userTxt) : { ok: rUser.ok, raw: userTxt };
     if (!rUser.ok) return res.status(rUser.status).json(user);
 
-    // 2️⃣ Creazione password su auth-service
+    // 2️⃣ auth/passwords
     const rPw = await fetch(`${SERVICES.AUTH}/passwords`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: user.id, password }),
     });
-    if (!rPw.ok) return res.status(rPw.status).json(await rPw.json());
+    const pwCt = rPw.headers.get("content-type") || "";
+    const pwTxt = await rPw.text();
+    const pw = pwCt.includes("application/json") ? JSON.parse(pwTxt) : { ok: rPw.ok, raw: pwTxt };
+    if (!rPw.ok) return res.status(rPw.status).json(pw);
 
-    // 3️⃣ Token fittizio (per ora)
     const token = `token-${user.id}-${Date.now()}`;
-
     res.status(201).json({ ok: true, user, token });
   } catch (err) {
     console.error(err);
@@ -264,6 +319,23 @@ app.post("/api/questions", async (req, res) => {
   }
 });
 
+
+
+
+// -----------------------------
+// ❗️Handler 404 JSON (in fondo, dopo tutte le route)
+// -----------------------------
+app.use((req, res) => {
+  res.status(404).type("application/json").send({ ok: false, error: "Not found", path: req.path });
+});
+
+// -----------------------------
+// ❗️Error handler JSON (sempre in fondo)
+// -----------------------------
+app.use((err, req, res, _next) => {
+  console.error("Gateway error:", err);
+  res.status(err.status || 500).type("application/json").send({ ok: false, error: err.message || "Internal error" });
+});
 
 
 // -----------------------------
