@@ -259,29 +259,69 @@ app.get("/api/groups/:groupId", async (req, res) => {
   }
 });
 
+// app.get("/api/groups/:groupId/members", async (req, res) => {
+//   try {
+//     const r = await fetch(`${SERVICES.USER}/groups/${req.params.groupId}/members`);
+//     const data = await r.json();
+
+//     // Normalizza in array
+//     let members;
+//     if (Array.isArray(data)) {
+//       members = data;
+//     } else if (Array.isArray(data.members)) {
+//       members = data.members;
+//     } else {
+//       members = [];
+//     }
+
+//     res.json(members); // <-- manda direttamente l’array
+//   } catch (err) {
+//     res.status(500).json({ ok: false, error: "Errore membri" });
+//   }
+// });
+
+
+// Pending question di un gruppo
+
 app.get("/api/groups/:groupId/members", async (req, res) => {
   try {
     const r = await fetch(`${SERVICES.USER}/groups/${req.params.groupId}/members`);
     const data = await r.json();
-
-    // Normalizza in array
-    let members;
-    if (Array.isArray(data)) {
-      members = data;
-    } else if (Array.isArray(data.members)) {
-      members = data.members;
-    } else {
-      members = [];
-    }
-
-    res.json(members); // <-- manda direttamente l’array
+    res.status(r.status).json(Array.isArray(data) ? data : (data.members || []));
   } catch (err) {
-    res.status(500).json({ ok: false, error: "Errore membri" });
+    res.status(502).json({ ok:false, error:"user-service unreachable" });
+  }
+});
+
+app.post("/api/groups/:groupId/invites", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.USER}/groups/${req.params.groupId}/invites`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok:false, error:"user-service unreachable" });
+  }
+});
+
+app.post("/api/invites/redeem", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.USER}/invites/redeem`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok:false, error:"user-service unreachable" });
   }
 });
 
 
-// Pending question di un gruppo
 app.get("/api/groups/:groupId/pending-question", async (req, res) => {
   try {
     const { groupId } = req.params;

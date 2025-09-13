@@ -2,9 +2,13 @@
 import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import groupRoutes from './routes/groups';
+import inviteRoutes from './routes/invites';
 
 const app = express();
 app.use(express.json());
+app.use(groupRoutes);
+app.use(inviteRoutes);
 
 // Middleware per loggare tutte le richieste
 app.use((req, _res, next) => {
@@ -24,14 +28,22 @@ app.get('/health', (_req: Request, res: Response) => {
 // -----------------------------
 // Users
 // -----------------------------
-app.get('/users', async (_req: Request, res: Response) => {
+app.get('/users', async (req: Request, res: Response) => {
   try {
-    const users = await prisma.user.findMany({ orderBy: { createdAt: 'desc' } });
+    const { email } = req.query;
+
+    const users = await prisma.user.findMany({
+      where: email ? { email: String(email) } : undefined,
+      orderBy: { createdAt: 'desc' },
+    });
+
     res.json(users);
   } catch (err: any) {
+    console.error('[GET /users] error:', err);
     res.status(500).json({ message: err.message });
   }
 });
+
 
 app.post('/users', async (req: Request, res: Response) => {
   const schema = z.object({
@@ -210,6 +222,40 @@ app.get('/groups/:groupId', async (req: Request, res: Response) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+// GET /users/:userId/groups -> lista gruppi a cui l'utente appartiene
+app.get('/users/:userId/groups', async (req: Request, res: Response) => {
+  const { userId } = req.params;
+
+  try {
+    const memberships = await prisma.membership.findMany({
+      where: { userId },
+      include: {
+        group: {
+          include: {
+            leader: { select: { id: true, name: true } }, // opzionale
+          },
+        },
+      },
+      orderBy: { groupId: 'asc' },
+    });
+
+    // normalizza l'output
+    const groups = memberships.map((m) => ({
+      id: m.group.id,
+      name: m.group.name,
+      role: m.role,                // "member" | "leader" (o come lo usi tu)
+      leaderId: m.group.leaderId,
+      leader: m.group.leader ? { id: m.group.leader.id, name: m.group.leader.name } : null,
+    }));
+
+    res.json(groups);
+  } catch (err: any) {
+    console.error('[users/:userId/groups] error:', err?.message || err);
+    res.status(500).json({ ok: false, error: 'Internal error' });
+  }
+});
+
 
 
 // -----------------------------

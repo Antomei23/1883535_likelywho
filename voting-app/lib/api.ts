@@ -11,8 +11,8 @@ function resolveApiBase() {
 
 export const API_BASE = resolveApiBase();
 */
-const API_BASE   = process.env.NEXT_PUBLIC_API_BASE   ?? "http://localhost:8080/";
-const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX ?? "/api/v1";
+export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+
 
 function assertJsonResponse(res: Response) {
   const ct = res.headers.get("content-type") || "";
@@ -50,7 +50,7 @@ export type PendingQuestion = {
   id: string;
   text: string;
   createdAt: string;
-  deadline: string;
+  expiresAt: string;
 };
 
 export type PendingQuestionResponse =
@@ -162,31 +162,44 @@ export async function createGroup(payload: {
 }
 
 
-export async function getGroupMembers(groupId: string): Promise<{ members: Member[] }> {
+export async function getGroupMembers(groupId: string): Promise<Member[]> {
   const r = await fetch(`${API_BASE}/api/groups/${groupId}/members`, { cache: "no-store" });
-  return j(r);
+  return j<Member[]>(r);
 }
 
+
 export async function getLeaderboard(groupId: string): Promise<LeaderboardResponse> {
-  const r = await fetch(`${API_BASE}/api/groups/${groupId}/leaderboard`, { cache: "no-store" });
-  return j(r);
+  try {
+    const r = await fetch(`${API_BASE}/api/groups/${groupId}/leaderboard`, { cache: "no-store" });
+    if (r.ok) return j(r);
+  } catch { /* ignore */ }
+  return { questionText: "", voted: [], entries: [] };
 }
+
+
 export async function inviteMembers(
   groupId: string,
   payload: InviteMembersPayload
 ): Promise<{ ok: true; invitations?: number }> {
-  const res = await fetch(`${API_BASE}/api/groups/${groupId}/invitations`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  const emails = (payload.emails ?? []).filter(Boolean);
+  let ok = 0;
 
-  if (!res.ok) {
-    throw new Error(await res.text());
+  for (const email of emails) {
+    const r = await fetch(`${API_BASE}/api/groups/${groupId}/invites`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email,
+        createdByUserId: getCurrentUserId() || "usr_alice",
+        expiresInHours: 72,
+      }),
+    });
+    if (r.ok) ok++;
   }
 
-  return res.json();
+  return { ok: true, invitations: ok };
 }
+
 
 /* =========================================================
  * QUESTIONS & VOTES
@@ -204,19 +217,25 @@ export async function createQuestion(payload: {
   expiresInHours?: number;
 }): Promise<{ ok: boolean; questionId?: string; error?: string }> {
   const expiresAt = new Date(Date.now() + (payload.expiresInHours ?? 24) * 60 * 60 * 1000).toISOString();
-  
+
   const r = await fetch(`${API_BASE}/api/questions`, {
     method: "POST",
-    cache: "no-store",
     headers: { "Content-Type": "application/json" },
+    cache: "no-store",
     body: JSON.stringify({
       groupId: payload.groupId,
       text: payload.text,
       expiresAt
     }),
   });
-  return j(r);
+
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) return { ok: false, error: data?.message || "createQuestion failed" };
+
+  // il question-service ritorna { id, groupId, text, ... }
+  return { ok: true, questionId: data.id };
 }
+
 
 export async function sendVote(payload: {
   groupId: string;
@@ -236,32 +255,28 @@ export async function sendVote(payload: {
 /* =========================================================
  * INVITES
  * ========================================================= */
-export async function createInvite(
-  groupId: string,
-  payload: { userIds?: string[]; emails?: string[] } = {}
-): Promise<InviteResponse> {
-  const r = await fetch(`${API_BASE}/api/groups/${groupId}/invite`, {
+// export async function createInvite(
+//   groupId: string,
+//   payload: { userIds?: string[]; emails?: string[] } = {}
+// ): Promise<InviteResponse> {
+//   const r = await fetch(`${API_BASE}/api/groups/${groupId}/invite`, {
+//     method: "POST",
+//     cache: "no-store",
+//     headers: { "Content-Type": "application/json" },
+//     body: JSON.stringify(payload),
+//   });
+//   return j(r);
+// }
+
+export async function joinGroupByCode(payload: { code: string; userId: string; userName?: string; }): Promise<JoinByCodeResponse> {
+  const r = await fetch(`${API_BASE}/api/invites/redeem`, {
     method: "POST",
-    cache: "no-store",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   return j(r);
 }
 
-export async function joinGroupByCode(payload: {
-  code: string;
-  userId: string;
-  userName?: string;
-}): Promise<JoinByCodeResponse> {
-  const r = await fetch(`${API_BASE}/api/groups/join`, {
-    method: "POST",
-    cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return j(r);
-}
 
 /* =========================================================
  * USER SCORES (già presente nel tuo file)
@@ -346,13 +361,14 @@ export async function resetPassword(email: string, newPassword: string): Promise
 }
 
 export async function register(payload: { email: string; username?: string; password: string }): Promise<{ ok: true; user: any; token?: string } | ApiErr> {
-  const res = await fetch(`${API_BASE}${API_PREFIX}/api/auth/register`, {
+  const res = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
   return assertJsonResponse(res);
 }
+
 
 export async function login(email: string, password: string): Promise<{ ok: true; user: any; token: string } | ApiErr> {
   const res = await fetch(`${API_BASE}/api/auth/login`, {

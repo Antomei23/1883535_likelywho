@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
+import axios from 'axios'
 
 const app = express();
 app.use(express.json());
@@ -28,6 +29,21 @@ app.post('/questions', async (req: Request, res: Response) => {
         expiresAt: new Date(parsed.data.expiresAt),
       },
     });
+
+    // chiamata al notification-service
+    try {
+      await axios.post('http://notification-service:4004/notifications/new-question-for-group', {
+        groupId: q.groupId,
+        questionId: q.id,
+        // opzionali:
+        // groupName: 'nome del gruppo',  // puoi recuperarlo dal user-service se serve
+        link: `http://localhost:8080/groups/${q.groupId}/questions/${q.id}`
+      });
+    } catch (notifyErr: any) {
+      console.error('[notify] errore invio notifica:', notifyErr.message || notifyErr);
+      // non bloccare la creazione della domanda se la mail fallisce
+    }
+
     return res.status(201).json(q);
   } catch (err: any) {
     return res.status(400).json({ message: err.message });

@@ -2,9 +2,14 @@ import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import nodemailer from 'nodemailer';
+import notifyRoutes from './routes/notify';
+import inviteRoutes from './routes/invite';
 
 const app = express();
 app.use(express.json());
+app.use(notifyRoutes);
+app.use(inviteRoutes);
+
 const prisma = new PrismaClient();
 
 // --- Mailer minimale (Mailpit) ---

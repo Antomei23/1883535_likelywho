@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL") // ...?schema=users
+  provider          = "postgresql"
+  url               = env("DATABASE_URL") // ...?schema=users
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
@@ -28,6 +28,7 @@ model Group {
   leader    User          @relation("LeaderGroups", fields: [leaderId], references: [id])
   members   Membership[]
   questions QuestionRef[]
+  invites   Invite[]
 }
 
 model Membership {
@@ -50,4 +51,21 @@ model QuestionRef {
   Group     Group    @relation(fields: [groupId], references: [id])
 
   @@index([groupId])
+}
+
+model Invite {
+  id              String    @id @default(uuid())
+  groupId         String
+  code            String    @unique
+  email           String? // se invito mirato a una mail specifica
+  createdByUserId String
+  expiresAt       DateTime
+  usedByUserId    String?
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  group Group @relation(fields: [groupId], references: [id])
+
+  @@index([groupId])
+  @@index([code])
 }

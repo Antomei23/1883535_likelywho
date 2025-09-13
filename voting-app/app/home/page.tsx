@@ -13,7 +13,7 @@ type Group = {
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
-const CURRENT_USER_ID = "u7"; // TODO: prendi da auth quando disponibile
+const CURRENT_USER_ID = "11111111-1111-1111-1111-111111111111"; // TODO: prendi da auth quando disponibile --> questa è Alice
 
 export default function HomePage() {
   const router = useRouter();
@@ -30,7 +30,7 @@ export default function HomePage() {
         setError(null);
         setLoading(true);
 
-        const res = await fetch(`${API_BASE}/api/groups`, { cache: "no-store" });
+        const res = await fetch(`${API_BASE}/api/users/${encodeURIComponent(CURRENT_USER_ID)}/groups`, { cache: "no-store" });
         if (!res.ok) throw new Error(await res.text());
 
         const raw = await res.json();

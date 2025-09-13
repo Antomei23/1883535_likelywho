@@ -59,12 +59,11 @@ app.post('/login', async (req: Request, res: Response) => {
 
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(parsed.error.format());
-
+  console.log(parsed)
   try {
     // 1. Recupera utente da user-service
     const userResp = await fetch(`${USER_SERVICE_URL}/users?email=${encodeURIComponent(parsed.data.email)}`);
     if (!userResp.ok) return res.status(401).json({ ok: false, error: "User not found" });
-
     const users = await userResp.json();
     const user = Array.isArray(users) ? users[0] : users;
 
@@ -75,7 +74,6 @@ app.post('/login', async (req: Request, res: Response) => {
     // 2. Recupera hash password da auth-service
     const pw = await prisma.password.findUnique({ where: { userId: user.id } });
     if (!pw) return res.status(401).json({ ok: false, error: 'Invalid credentials' });
-
     // 3. Confronta password
     const valid = await bcrypt.compare(parsed.data.password, pw.hash);
     if (!valid) return res.status(401).json({ ok: false, error: 'Invalid credentials' });
