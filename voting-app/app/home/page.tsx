@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { getUserGroups, getPendingQuestion } from "@/lib/api";
-import { getCurrentUserId, isAuthenticated } from "@/lib/auth";
+import { getUserGroups, getPendingQuestion, getCurrentUserId } from "@/lib/api";
 
 type Group = {
   id: string;
@@ -22,16 +21,15 @@ export default function HomePage() {
   useEffect(() => {
     let alive = true;
 
-    async function load() {
-      // se non autenticata → login
-      if (!isAuthenticated()) {
-        router.replace("/login");
-        return;
-      }
+    (async () => {
+      // ✅ Controllo auth lato client
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const uid = getCurrentUserId();
 
-      const userId = getCurrentUserId();
-      if (!userId) {
-        router.replace("/login");
+      if (!token || !uid) {
+        // niente token → vai al login
+        router.replace("/login?next=/home");
         return;
       }
 
@@ -39,36 +37,30 @@ export default function HomePage() {
         setError(null);
         setLoading(true);
 
-        // gruppi dell'utente (con Authorization già gestita in lib/api)
-        const list = await getUserGroups(userId);
+        // 1) gruppi dell’utente (passa per il gateway con Authorization)
+        const list = await getUserGroups(uid);
 
-        // flag "hasNewQuestion" per ogni gruppo
+        // 2) opzionale: badge "New" calcolato interrogando pending-question
         const withFlags = await Promise.all(
           list.map(async (g) => {
             try {
-              const p = await getPendingQuestion(g.id, userId);
-              return { ...g, hasNewQuestion: !!p?.hasPending };
+              const pq = await getPendingQuestion(g.id, uid);
+              return { ...g, hasNewQuestion: pq.hasPending === true };
             } catch {
               return g;
             }
           })
         );
 
-        if (alive) setGroups(withFlags as Group[]);
+        if (alive) setGroups(withFlags);
       } catch (e: any) {
-        // se il token non è valido o mancante → login
-        const msg = e?.message || "";
-        if (/Missing token|Invalid token|401|403/i.test(msg)) {
-          router.replace("/login");
-          return;
-        }
-        if (alive) setError("Impossibile caricare i gruppi.");
+        console.error("❌ Error fetching groups:", e);
+        if (alive) setError(e?.message || "Impossibile caricare i gruppi");
       } finally {
         if (alive) setLoading(false);
       }
-    }
+    })();
 
-    load();
     return () => {
       alive = false;
     };

@@ -1,7 +1,9 @@
+// app/gruppo/[id]/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 
 import {
   getCurrentUserId,
@@ -12,19 +14,16 @@ import {
   type Member,
 } from "@/lib/api";
 
-type Params = { groupId: string };
-
-export default function GroupPage({ params }: { params: { groupId: string } }) {
-  const { groupId } = params;
-  console.log("Group ID:", groupId);
-
+export default function GroupPage() {
+  const params = useParams<{ id: string }>();
+  const groupId = params?.id; // ← prende 'id' dalla cartella [id]
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<{ hasPending: boolean; questionId?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const currentUserId = getCurrentUserId();// TODO: sostituire con utente loggato
+  const currentUserId = getCurrentUserId(); // TODO: sostituire con utente loggato
 
   useEffect(() => {
     let active = true;
@@ -32,6 +31,7 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
     async function loadOnce() {
       try {
         setError(null);
+        if (!groupId) throw new Error("Missing route param 'id'");
 
         const g = await getGroup(groupId);
         if (!active) return;
@@ -48,10 +48,10 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
         const pq = await getPendingQuestion(groupId, currentUserId);
         if (!active) return;
         setPending({ hasPending: pq.hasPending, questionId: pq.question?.id });
-      } catch (e) {
+      } catch (e: any) {
         console.error(e);
         if (!active) return;
-        setError("Impossibile caricare il gruppo. Riprova.");
+        setError(e?.message || "Impossibile caricare il gruppo. Riprova.");
       } finally {
         if (active) setLoading(false);
       }
@@ -61,10 +61,13 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
 
     const t = setInterval(async () => {
       try {
+        if (!groupId) return;
         const pq = await getPendingQuestion(groupId, currentUserId);
         if (!active) return;
         setPending({ hasPending: pq.hasPending, questionId: pq.question?.id });
-      } catch { /* silenzioso */ }
+      } catch {
+        /* ignore */
+      }
     }, 30_000);
 
     return () => {
@@ -74,6 +77,7 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
   }, [groupId, currentUserId]);
 
   if (loading) return <div style={{ padding: 24 }}>Loading group…</div>;
+  if (error) return <div style={{ padding: 24, color: "#a00" }}>Error: {error}</div>;
   if (!group) return <div style={{ padding: 24 }}>Group not found.</div>;
 
   return (
@@ -85,8 +89,6 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
       </div>
 
       <div style={styles.content}>
-        {error && <div style={styles.errorBox}>{error}</div>}
-
         {pending?.hasPending && pending.questionId && (
           <Link
             href={`/voting/${group.id}/${pending.questionId}?selfVoting=false&currentUserId=${currentUserId}`}
@@ -115,6 +117,12 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
               <div style={styles.label}>Group leader</div>
               <div style={styles.value}>{group.leader?.name ?? "—"}</div>
             </div>
+            {group.joinCode && (
+              <div>
+                <div style={styles.label}>Join code</div>
+                <div style={styles.value}><code>{group.joinCode}</code></div>
+              </div>
+            )}
           </div>
 
           <div style={{ marginTop: 16 }}>
@@ -132,6 +140,7 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+              {/* Se non hai più la pagina invite, puoi rimuovere questo link */}
               <Link href={`/gruppo/${groupId}/invite`} style={styles.btnSecondary}>+ Share code</Link>
               <button style={styles.btnDanger} onClick={() => alert("TODO: implement delete group")}>
                 Delete group 🗑️
@@ -155,7 +164,6 @@ const styles: { [k: string]: React.CSSProperties } = {
   menuButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   userButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   content: { padding: 24, maxWidth: 520, margin: "0 auto", display: "grid", gap: 14 },
-  errorBox: { background: "#ffecec", color: "#7a0b0b", border: "1px solid #f7c2c2", padding: 10, borderRadius: 8 },
   bannerPlay: { background: "#fff4e5", color: "#7a3d00", border: "1px solid #ffd7a3", padding: "12px 14px", borderRadius: 12, fontWeight: 700, display: "block", textDecoration: "none", textAlign: "center" },
   card: { backgroundColor: "#fff", padding: 16, borderRadius: 12, boxShadow: "0 4px 12px rgba(0,0,0,.05)" },
   label: { fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4, color: "#6b7280" },

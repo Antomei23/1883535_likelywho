@@ -1,47 +1,66 @@
 // voting-app/lib/api.ts
-"use client";
-
-import { getToken, getCurrentUserId } from "./auth";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
-/* =========================
- * Helpers
- * ========================= */
-type Jsonish = Record<string, any>;
+/* ─────────────────────────────────────────────────────
+ * Auth helpers (token in localStorage)
+ * ────────────────────────────────────────────────────*/
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("accessToken");
+}
 
-function buildHeaders(extra?: Record<string, string>): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+export function setToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("accessToken", token);
+}
+
+export function clearToken() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("accessToken");
+}
+
+function getCurrentUser(): { id: string; email?: string; name?: string } | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("currentUser");
+  try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+
+/** ID utente corrente dalla UI (salvato in localStorage dopo il login). */
+export function getCurrentUserId(): string {
+  return getCurrentUser()?.id || "";
+}
+
+/* ─────────────────────────────────────────────────────
+ * fetch con Authorization automatico
+ * ────────────────────────────────────────────────────*/
+async function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
   const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  if (extra) Object.assign(headers, extra);
-  return headers;
+  const headers = new Headers(init.headers || {});
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (!headers.has("Content-Type") && init.body) headers.set("Content-Type", "application/json");
+  return fetch(input, { ...init, headers });
 }
 
-/** fetch con Authorization se presente */
-async function authFetch(input: string, init: RequestInit = {}) {
-  const headers = buildHeaders(init.headers as Record<string, string> | undefined);
-  return fetch(input, { ...init, headers, cache: "no-store" });
-}
-
-async function j<T>(r: Response): Promise<T> {
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = (data as any)?.error ?? `HTTP ${r.status}`;
-    throw new Error(msg);
-  }
-  return data as T;
-}
-
+/* ─────────────────────────────────────────────────────
+ * Helpers JSON
+ * ────────────────────────────────────────────────────*/
 async function asJson<T = any>(r: Response): Promise<T> {
   const txt = await r.text();
   try { return JSON.parse(txt); } catch { return txt as any; }
 }
 
-/* =========================
+function ensureOk(data: any, r: Response, fallbackMsg = "Request failed") {
+  if (!r.ok) {
+    const msg = (data && (data.error || data.message)) || fallbackMsg;
+    throw new Error(msg);
+  }
+}
+
+/* ─────────────────────────────────────────────────────
  * Types usati dal frontend
- * ========================= */
-export type Member = { id: string; name: string; avatarUrl?: string | null};
+ * ────────────────────────────────────────────────────*/
+export type Member = { id: string; name: string; avatarUrl?: string | null };
 export type Group = {
   id: string;
   name: string;
@@ -71,13 +90,6 @@ export type PendingQuestionResponse =
   | { hasPending: false; question?: undefined }
   | { hasPending: true; question: PendingQuestion };
 
-export type JoinByCodeResponse = { ok: boolean; groupId?: string; groupName?: string; error?: string };
-
-export type UserScores = {
-  totalPoints: number;
-  groupPoints: Array<{ groupId: string; groupName: string; points: number }>;
-};
-
 export type ApiOk = { ok: true };
 export type ApiErr = { ok: false; error: string };
 
@@ -89,26 +101,46 @@ export interface UserProfile {
   createdAt?: string;
 }
 
-/* =========================================================
+/* ─────────────────────────────────────────────────────
  * GROUPS
- * ========================================================= */
-export async function getGroups(): Promise<Group[]> {
-  const r = await authFetch(`${API_BASE}/api/groups`);
-  return j<Group[]>(r);
-}
-
+ * ────────────────────────────────────────────────────*/
+/** Lista gruppi di un utente (protetta: richiede token). */
 export async function getUserGroups(userId: string): Promise<Group[]> {
-  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/groups`);
-  return j<Group[]>(r);
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/groups`, { cache: "no-store" });
+  const data = await asJson(r);
+  ensureOk(data, r, "Unable to fetch groups");
+  // gateway può restituire array diretto o { groups:[...] }
+  return Array.isArray(data) ? data : (data.groups ?? []);
 }
 
+/** (Facoltativa) lista di tutti i gruppi. */
+export async function getGroups(): Promise<Group[]> {
+  const r = await authFetch(`${API_BASE}/api/groups`, { cache: "no-store" });
+  const data = await asJson(r);
+  // ensureOk(data, r, "Unable to fetch groups");
+  // return Array.isArray(data) ? data : (data.groups ?? data);
+  if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+  // alcuni servizi rispondono { ok:true, group }, altri direttamente il group
+  return data?.group ?? data;
+}
+
+/** Dettaglio gruppo (gateway può rispondere { ok, group } o gruppo diretto). */
 export async function getGroup(groupId: string): Promise<Group> {
-  const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}`);
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((data as any)?.error ?? `HTTP ${r.status}`);
-  return (data?.group ?? data) as Group;
+  const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}`, { cache: "no-store" });
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Group not found");
+  return data?.group ?? data;
 }
 
+/** Membri del gruppo (gateway normalizza in array). */
+export async function getGroupMembers(groupId: string): Promise<Member[]> {
+  const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/members`, { cache: "no-store" });
+  const data = await asJson(r);
+  ensureOk(data, r, "Unable to fetch members");
+  return Array.isArray(data) ? data : (data.members ?? []);
+}
+
+/** Crea un nuovo gruppo (leaderId ricavato dal token dal gateway). */
 export async function createGroup(payload: {
   name: string;
   notificationTime?: "morning" | "afternoon" | "evening" | "midday";
@@ -116,38 +148,45 @@ export async function createGroup(payload: {
 }): Promise<{ ok: boolean; group?: Group; error?: string }> {
   const r = await authFetch(`${API_BASE}/api/groups`, {
     method: "POST",
+    cache: "no-store",
     body: JSON.stringify(payload),
   });
-
-  const data: any = await r.json().catch(() => ({}));
-  if (!r.ok) return { ok: false, error: data?.error ?? `HTTP ${r.status}` };
-
-  const group = data?.group ?? data;
-  if (group?.id) return { ok: true, group };
-  return { ok: false, error: "No group returned" };
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Create group failed" };
+  return { ok: true, group: data?.group ?? data };
 }
 
-export async function getGroupMembers(groupId: string): Promise<Member[]> {
-  const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/members`);
-  return j<Member[]>(r); // gateway normalizza a array
+/** Entra in un gruppo con codice (userId preso dal token lato gateway). */
+export async function joinGroupByCode(
+  code: string,
+  _userId?: string,  // compat: ignorato; il gateway usa il token
+  _userName?: string
+): Promise<{ ok: boolean; groupId?: string; error?: string }> {
+  const r = await authFetch(`${API_BASE}/api/groups/join`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Join failed");
+  return data;
 }
 
-export async function getLeaderboard(groupId: string): Promise<LeaderboardResponse> {
-  try {
-    const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/leaderboard`);
-    if (r.ok) return j(r);
-  } catch { /* ignore */ }
-  return { questionText: "", voted: [], entries: [] };
-}
-
-/* =========================================================
+/* ─────────────────────────────────────────────────────
  * QUESTIONS & VOTES
- * ========================================================= */
-export async function getPendingQuestion(groupId: string, userId: string): Promise<PendingQuestionResponse> {
+ * ────────────────────────────────────────────────────*/
+export async function getPendingQuestion(groupId: string, userId?: string): Promise<PendingQuestionResponse> {
   const u = new URL(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/pending-question`);
-  u.searchParams.set("userId", userId);
-  const r = await authFetch(u.toString());
-  return j<PendingQuestionResponse>(r);
+  if (userId) u.searchParams.set("userId", userId);
+  const r = await authFetch(u.toString(), { cache: "no-store" });
+  const data = await asJson(r);
+  if (!r.ok) return { hasPending: false };
+  // normalizza: backend può già dare { hasPending: true/false, question? }
+  if (typeof data?.hasPending === "boolean") return data as PendingQuestionResponse;
+  // fallback legacy
+  if (Array.isArray(data) && data.length > 0) {
+    return { hasPending: true, question: data[0] as PendingQuestion };
+  }
+  return { hasPending: false };
 }
 
 export async function createQuestion(payload: {
@@ -158,92 +197,113 @@ export async function createQuestion(payload: {
   const expiresAt = new Date(Date.now() + (payload.expiresInHours ?? 24) * 60 * 60 * 1000).toISOString();
   const r = await authFetch(`${API_BASE}/api/questions`, {
     method: "POST",
+    cache: "no-store",
     body: JSON.stringify({ groupId: payload.groupId, text: payload.text, expiresAt }),
   });
-
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) return { ok: false, error: data?.message || "createQuestion failed" };
-  return { ok: true, questionId: data.id };
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.message || data?.error || "createQuestion failed" };
+  return { ok: true, questionId: data.id ?? data.questionId };
 }
 
-/* =========================================================
- * JOIN BY CODE (niente email)
- * ========================================================= */
-export async function joinGroupByCode(
-  code: string,
-  userId: string,
-  userName?: string
-): Promise<JoinByCodeResponse> {
-  const r = await authFetch(`${API_BASE}/api/groups/join`, {
+export async function sendVote(payload: {
+  groupId: string;
+  questionId: string;
+  voterId: string;
+  votedUserId: string;
+}): Promise<{ ok: boolean; error?: string }> {
+  const r = await authFetch(`${API_BASE}/api/votes`, {
     method: "POST",
-    body: JSON.stringify({ code, userId, userName }),
+    cache: "no-store",
+    body: JSON.stringify(payload),
   });
-  return j(r);
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Vote failed" };
+  return { ok: true };
 }
 
-/* =========================================================
- * SCORES / ACCOUNT
- * ========================================================= */
+/* ─────────────────────────────────────────────────────
+ * SCORES (se usato nella tua UI)
+ * ────────────────────────────────────────────────────*/
+export type UserScores = {
+  totalPoints: number;
+  groupPoints: Array<{ groupId: string; groupName: string; points: number }>;
+};
+
 export async function getUserScores(userId: string): Promise<UserScores | ApiErr> {
-  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/scores`);
-  const data = await asJson<{ ok: boolean; totalPoints?: number; groupPoints?: any; error?: string }>(r);
-  if (!data || (data as any).ok === false) {
-    return { ok: false, error: (data as any)?.error || "Unable to fetch scores" } as ApiErr;
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/scores`, { cache: "no-store" });
+  const data = await asJson<{ ok?: boolean; totalPoints?: number; groupPoints?: any; error?: string }>(r);
+  if (!r.ok || data?.ok === false) {
+    return { ok: false, error: data?.error || "Unable to fetch scores" } as ApiErr;
   }
-  return { totalPoints: data.totalPoints ?? 0, groupPoints: data.groupPoints ?? [] };
+  return {
+    totalPoints: data.totalPoints ?? 0,
+    groupPoints: data.groupPoints ?? [],
+  };
 }
 
-export async function deleteAccount(userId: string): Promise<ApiOk | ApiErr> {
-  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, { method: "DELETE" });
-  return asJson(r);
-}
-
-/* =========================================================
- * Profilo
- * ========================================================= */
-export { getCurrentUserId }; // già fornita da lib/auth
-
+/* ─────────────────────────────────────────────────────
+ * PROFILE / ACCOUNT
+ * ────────────────────────────────────────────────────*/
 export async function getUserProfile(
   userId: string
 ): Promise<{ ok: true; profile: UserProfile } | ApiErr> {
-  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`);
-  return asJson(r);
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, { cache: "no-store" });
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Profile not found" };
+  return data;
 }
+
+export type UpdateProfilePayload = Partial<Pick<UserProfile, "username" | "email" | "avatarUrl">>;
 
 export async function updateUserProfile(
   userId: string,
-  payload: Partial<Pick<UserProfile, "username" | "email" | "avatarUrl">>
+  payload: UpdateProfilePayload
 ): Promise<{ ok: true; profile: UserProfile } | ApiErr> {
   const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
     method: "PUT",
+    cache: "no-store",
     body: JSON.stringify(payload),
   });
-  return asJson(r);
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Update failed" };
+  return data;
 }
 
-/* =========================================================
- * Auth endpoints
- * ========================================================= */
+export async function deleteAccount(userId: string): Promise<ApiOk | ApiErr> {
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    cache: "no-store",
+  });
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Delete failed" };
+  return data;
+}
+
+/* ─────────────────────────────────────────────────────
+ * AUTH (gateway emette token fittizio token-<userId>-<ts>)
+ * ────────────────────────────────────────────────────*/
 export async function register(payload: { email: string; username: string; password: string }) {
   const r = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
-    headers: buildHeaders(), // senza Authorization
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return j(r);
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Register failed");
+  return data as { ok: true; user: any; token: string };
 }
 
 export async function login(email: string, password: string) {
   const r = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
-    headers: buildHeaders(), // senza Authorization
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  return asJson(r);
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Login failed");
+  return data as { ok: true; user: any; token: string };
 }
 
-/* =========================
- * Alias compatibilità
- * ========================= */
+/** Alias compatibilità storica */
 export const getProfile = getUserProfile;
 export const updateProfile = updateUserProfile;
