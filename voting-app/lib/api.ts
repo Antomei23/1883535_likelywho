@@ -1,4 +1,7 @@
 // voting-app/lib/api.ts
+"use client";
+
+import { getToken, getCurrentUserId } from "./auth";
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -6,11 +9,6 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:80
  * Helpers
  * ========================= */
 type Jsonish = Record<string, any>;
-
-function getToken(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("accessToken");
-}
 
 function buildHeaders(extra?: Record<string, string>): Record<string, string> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -99,11 +97,15 @@ export async function getGroups(): Promise<Group[]> {
   return j<Group[]>(r);
 }
 
+export async function getUserGroups(userId: string): Promise<Group[]> {
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/groups`);
+  return j<Group[]>(r);
+}
+
 export async function getGroup(groupId: string): Promise<Group> {
   const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}`);
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error((data as any)?.error ?? `HTTP ${r.status}`);
-  // l’API Gateway può rispondere { ok:true, group:{...} } oppure direttamente il group
   return (data?.group ?? data) as Group;
 }
 
@@ -112,10 +114,6 @@ export async function createGroup(payload: {
   notificationTime?: "morning" | "afternoon" | "evening" | "midday";
   disableSelfVote?: boolean;
 }): Promise<{ ok: boolean; group?: Group; error?: string }> {
-
-  const token = getToken();
-  if (!token) return { ok: false, error: "Not authenticated" };
-
   const r = await authFetch(`${API_BASE}/api/groups`, {
     method: "POST",
     body: JSON.stringify(payload),
@@ -131,8 +129,7 @@ export async function createGroup(payload: {
 
 export async function getGroupMembers(groupId: string): Promise<Member[]> {
   const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/members`);
-  // il gateway già normalizza a [] oppure array
-  return j<Member[]>(r);
+  return j<Member[]>(r); // gateway normalizza a array
 }
 
 export async function getLeaderboard(groupId: string): Promise<LeaderboardResponse> {
@@ -204,19 +201,7 @@ export async function deleteAccount(userId: string): Promise<ApiOk | ApiErr> {
 /* =========================================================
  * Profilo
  * ========================================================= */
-export function getCurrentUserId(): string {
-  if (typeof window === "undefined") return "";
-  const direct = localStorage.getItem("userId");
-  if (direct) return direct;
-  const userStr = localStorage.getItem("currentUser");
-  if (!userStr) return "";
-  try {
-    const user = JSON.parse(userStr);
-    return user.id || "";
-  } catch {
-    return "";
-  }
-}
+export { getCurrentUserId }; // già fornita da lib/auth
 
 export async function getUserProfile(
   userId: string
@@ -236,18 +221,13 @@ export async function updateUserProfile(
   return asJson(r);
 }
 
-export async function resetPassword(email: string, newPassword: string): Promise<ApiOk | ApiErr> {
-  const r = await authFetch(`${API_BASE}/api/users/reset-password`, {
-    method: "POST",
-    body: JSON.stringify({ email, newPassword }),
-  });
-  return asJson(r);
-}
-
-export async function register(payload: { email: string; username?: string; password: string }) {
+/* =========================================================
+ * Auth endpoints
+ * ========================================================= */
+export async function register(payload: { email: string; username: string; password: string }) {
   const r = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
-    headers: buildHeaders(), // non serve token qui
+    headers: buildHeaders(), // senza Authorization
     body: JSON.stringify(payload),
   });
   return j(r);
@@ -256,7 +236,7 @@ export async function register(payload: { email: string; username?: string; pass
 export async function login(email: string, password: string) {
   const r = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
-    headers: buildHeaders(), // non serve token qui
+    headers: buildHeaders(), // senza Authorization
     body: JSON.stringify({ email, password }),
   });
   return asJson(r);
