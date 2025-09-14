@@ -1,16 +1,5 @@
 // voting-app/lib/api.ts
-/*
-function resolveApiBase() {
-  // In SSR (Node dentro Docker) → usa il service name interno
-  if (typeof window === "undefined") {
-    return process.env.SERVER_API_BASE || "http://api-gateway:8080";
-  }
-  // In browser → usa l’host raggiungibile dall’esterno
-  return process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
-}
 
-export const API_BASE = resolveApiBase();
-*/
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
 
@@ -27,10 +16,12 @@ function assertJsonResponse(res: Response) {
 /* =========================
  * Types usati dal frontend
  * ========================= */
-export type Member = { id: string; name: string; avatarUrl?: string | null};
+// consigliato: estendi Member
+export type Member = { id: string; name: string; avatarUrl?: string | null; role?: string };
 export type Group = {
   id: string;
   name: string;
+  joinCode?: string;
   leader?: { id: string; name: string } | null;
   members?: Member[];
   points?: Record<string, number>;
@@ -57,7 +48,6 @@ export type PendingQuestionResponse =
   | { hasPending: false; question?: undefined }
   | { hasPending: true; question: PendingQuestion };
 
-export type InviteResponse = { ok: boolean; code?: string; error?: string };
 export type JoinByCodeResponse = { ok: boolean; groupId?: string; groupName?: string; error?: string };
 
 export type UserScores = {
@@ -68,10 +58,7 @@ export type UserScores = {
 export type UpdateProfilePayload = Partial<
   Pick<UserProfile, "username" | "email" | "avatarUrl">
 >;
-export type InviteMembersPayload = {
-  userIds?: string[];     
-  emails?: string[];     
-};
+
 
 export type ApiError = { error: string; code?: string; status?: number };
 /** Aggiunto: profilo utente, coerente con l'API gateway */
@@ -120,40 +107,37 @@ export async function getGroup(groupId: string): Promise<Group> {
   return j<Group>(r);
 }
 
-// lib/api.ts (modifica solo la funzione createGroup)
-
 export async function createGroup(payload: {
   name: string;
   notificationTime?: "morning" | "afternoon" | "evening" | "midday";
   disableSelfVote?: boolean;
 }): Promise<{ ok: boolean; group?: Group; error?: string }> {
 
-  // Prendi token da localStorage
-  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  if (!token) {
-    return { ok: false, error: "Not authenticated" };
-  }
+  // prendi l'ID utente dal localStorage (fallback demo se vuoto)
+  const leaderId =
+    getCurrentUserId() ||
+    (typeof window !== "undefined" ? localStorage.getItem("userId") || "" : "") ||
+    "11111111-1111-1111-1111-111111111111"; // <-- opzionale: id seed di Alice in dev
 
   const r = await fetch(`${API_BASE}/api/groups`, {
     method: "POST",
     cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-    },
-    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...payload,
+      leaderId,                   // <-- necessario per user-service
+    }),
   });
 
   let data: any;
   try {
     data = await r.json();
-  } catch (err) {
+  } catch {
     return { ok: false, error: "Failed to parse response" };
   }
 
-  // ✅ Normalizza sempre la risposta
   if (data?.group && data.group.id) {
-    return { ok: true, group: data.group };
+    return { ok: true, group: data.group as Group };
   } else if (data?.id) {
     return { ok: true, group: data as Group };
   } else {
@@ -174,30 +158,6 @@ export async function getLeaderboard(groupId: string): Promise<LeaderboardRespon
     if (r.ok) return j(r);
   } catch { /* ignore */ }
   return { questionText: "", voted: [], entries: [] };
-}
-
-
-export async function inviteMembers(
-  groupId: string,
-  payload: InviteMembersPayload
-): Promise<{ ok: true; invitations?: number }> {
-  const emails = (payload.emails ?? []).filter(Boolean);
-  let ok = 0;
-
-  for (const email of emails) {
-    const r = await fetch(`${API_BASE}/api/groups/${groupId}/invites`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email,
-        createdByUserId: getCurrentUserId() || "usr_alice",
-        expiresInHours: 72,
-      }),
-    });
-    if (r.ok) ok++;
-  }
-
-  return { ok: true, invitations: ok };
 }
 
 
@@ -252,30 +212,19 @@ export async function sendVote(payload: {
   return j(r);
 }
 
-/* =========================================================
- * INVITES
- * ========================================================= */
-// export async function createInvite(
-//   groupId: string,
-//   payload: { userIds?: string[]; emails?: string[] } = {}
-// ): Promise<InviteResponse> {
-//   const r = await fetch(`${API_BASE}/api/groups/${groupId}/invite`, {
-//     method: "POST",
-//     cache: "no-store",
-//     headers: { "Content-Type": "application/json" },
-//     body: JSON.stringify(payload),
-//   });
-//   return j(r);
-// }
-
-export async function joinGroupByCode(payload: { code: string; userId: string; userName?: string; }): Promise<JoinByCodeResponse> {
-  const r = await fetch(`${API_BASE}/api/invites/redeem`, {
+export async function joinGroupByCode(
+  code: string,
+  userId: string,
+  userName?: string
+): Promise<JoinByCodeResponse> {
+  const r = await fetch(`${API_BASE}/api/groups/join`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ code, userId, userName }),
   });
   return j(r);
 }
+
 
 
 /* =========================================================

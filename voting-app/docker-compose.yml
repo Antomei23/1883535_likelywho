@@ -23,18 +23,18 @@ services:
     depends_on: [postgres]
     networks: [app]
 
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: mailpit
-    restart: unless-stopped
-    ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # UI Web
-    environment:
-      MP_MAX_MESSAGES: "5000"
-    volumes:
-      - mailpitdata:/data
-    networks: [app]
+  # mailpit:
+  #   image: axllent/mailpit:latest
+  #   container_name: mailpit
+  #   restart: unless-stopped
+  #   ports:
+  #     - "1025:1025"   # SMTP
+  #     - "8025:8025"   # UI Web
+  #   environment:
+  #     MP_MAX_MESSAGES: "5000"
+  #   volumes:
+  #     - mailpitdata:/data
+  #   networks: [app]
 
   auth-service:
     build: ./services/auth-service
@@ -81,18 +81,18 @@ services:
       - ./services/voting-service/prisma:/app/prisma
     networks: [app]
 
-  notification-service:
-    build: ./services/notification-service
-    container_name: notification-service
-    env_file: ./services/notification-service/.env
-    depends_on: 
-      - postgres
-      - mailpit
-    ports:
-      - "4004:4004"
-    volumes:
-      - ./services/notification-service/prisma:/app/prisma
-    networks: [app]
+  # notification-service:
+  #   build: ./services/notification-service
+  #   container_name: notification-service
+  #   env_file: ./services/notification-service/.env
+  #   depends_on: 
+  #     - postgres
+  #     - mailpit
+  #   ports:
+  #     - "4004:4004"
+  #   volumes:
+  #     - ./services/notification-service/prisma:/app/prisma
+  #   networks: [app]
 
   api-gateway:
     build:
@@ -106,7 +106,7 @@ services:
       - question-service
       - auth-service
       - voting-service
-      - notification-service
+      # - notification-service
     networks: [app]
 
 

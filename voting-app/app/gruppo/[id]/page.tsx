@@ -42,7 +42,7 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
         } else {
           const mm = await getGroupMembers(groupId);
           if (!active) return;
-          setMembers(mm.members ?? []);
+          setMembers(Array.isArray(mm) ? mm : (mm as any).members ?? []);
         }
 
         const pq = await getPendingQuestion(groupId, currentUserId);
@@ -132,7 +132,7 @@ export default function GroupPage({ params }: { params: { groupId: string } }) {
             </div>
 
             <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-              <Link href={`/gruppo/${groupId}/invite`} style={styles.btnSecondary}>+ Add players</Link>
+              <Link href={`/gruppo/${groupId}/invite`} style={styles.btnSecondary}>+ Share code</Link>
               <button style={styles.btnDanger} onClick={() => alert("TODO: implement delete group")}>
                 Delete group 🗑️
               </button>

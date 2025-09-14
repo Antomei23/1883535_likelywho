@@ -3,12 +3,22 @@ import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import groupRoutes from './routes/groups';
-import inviteRoutes from './routes/invites';
+// import inviteRoutes from './routes/invites';
+import crypto from "crypto";
+
+function generateJoinCode(len = 6) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const bytes = crypto.randomBytes(len);
+  let s = "";
+  for (let i = 0; i < len; i++) s += alphabet[bytes[i] % alphabet.length];
+  return s;
+}
+
 
 const app = express();
 app.use(express.json());
 app.use(groupRoutes);
-app.use(inviteRoutes);
+// app.use(inviteRoutes);
 
 // Middleware per loggare tutte le richieste
 app.use((req, _res, next) => {
@@ -141,6 +151,7 @@ app.post('/groups', async (req: Request, res: Response) => {
       data: {
         name: parsed.data.name,
         leaderId: parsed.data.leaderId,
+        joinCode: generateJoinCode(),
         // se aggiungi i campi al modello Prisma:
         // notificationTime: parsed.data.notificationTime,
         // disableSelfVote: parsed.data.disableSelfVote ?? false,
@@ -162,6 +173,30 @@ app.post('/groups', async (req: Request, res: Response) => {
     res.status(400).json({ message: err.message });
   }
 });
+
+app.post('/groups/join', async (req: Request, res: Response) => {
+  const schema = z.object({ code: z.string().min(4), userId: z.string() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json(parsed.error.format());
+  try {
+    const code = parsed.data.code.trim().toUpperCase();
+    const group = await prisma.group.findUnique({ where: { joinCode: code } }); // richiede @unique
+    if (!group) return res.status(404).json({ ok: false, error: "Invalid code" });
+
+    const existing = await prisma.membership.findUnique({
+      where: { userId_groupId: { userId: parsed.data.userId, groupId: group.id } },
+    });
+    if (existing) return res.json({ ok: true, groupId: group.id });
+
+    await prisma.membership.create({
+      data: { userId: parsed.data.userId, groupId: group.id, role: "member" },
+    });
+    res.json({ ok: true, groupId: group.id });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 
 
 // Aggiungi membro a gruppo
