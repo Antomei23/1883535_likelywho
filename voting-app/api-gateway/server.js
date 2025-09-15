@@ -6,18 +6,35 @@ const fetch = require("node-fetch"); // Node < 18, altrimenti fetch globale
 const AIGenerator = require("./ai-generator");
 
 const app = express();
-app.use(
-  cors({
-    origin: ["http://localhost:3000", "http://localhost:5173"],
-    credentials: true,
-  })
-);
+//app.use(
+//  cors({
+//    origin: ["http://localhost:3000", "http://localhost:5173"],
+//    credentials: true,
+//  })
+//);
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // SSR/curl/health-check
+    if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return cb(null, true);
+    return cb(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"]
+}));
+
+// ⚠️ Express 5: niente pattern con "*" negli OPTIONS.
+// Preflight generico per tutte le richieste.
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 app.use(express.json());
 
 // Health check per test da browser
 app.get("/", (_req, res) => res.json({ ok: true, service: "api-gateway" }));
 
-//  app.use(cors());
 //app.use(cors({ origin: ["http://localhost:3000", "http://localhost:5173"], credentials: true }));
 //app.use(express.json());
 
@@ -171,16 +188,6 @@ app.post("/api/auth/register", async (req, res) => {
     const { email, username, password } = req.body;
     if (!email || !username || !password) {
       return res.status(400).json({ ok: false, error: "Email, username e password richiesti" });
-    }
-
-    // helper: prova a leggere JSON, altrimenti restituisce text grezzo
-    async function parseMaybeJson(r) {
-      const ct = r.headers.get("content-type") || "";
-      const txt = await r.text(); // lo stream si legge UNA sola volta
-      if (ct.includes("application/json")) {
-        try { return JSON.parse(txt); } catch { /* fallback sotto */ }
-      }
-      return { ok: r.ok, raw: txt };
     }
 
     // helper: prova a leggere JSON, altrimenti restituisce text grezzo
@@ -418,6 +425,47 @@ app.post("/api/questions", authRequired, async (req, res) => {
     res.status(502).json({ ok: false, error: "question-service unreachable" });
   }
 });
+
+// POST /api/v1/ai/generate   { topic?: string, n?: number }
+app.post("/api/v1/ai/generate", async (req, res) => {
+  try {
+    //const topic = String(req.body?.topic ?? "").trim() || "anything";
+    //const n = Math.max(1, Math.min(20, Number(req.body?.n ?? 5)));
+    //const items = await AIGenerator.generateQuestions(topic, n);
+    //res.json({ ok: true, items });
+    const topic = String(req.query.topic || "anything");
+    const n = Number(req.query.n || 3);
+    const items = await AIGenerator.generateQuestions(topic, n);
+    res.json({ ok: true, items });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "AI generation failed" });
+  }
+});
+
+// Alias /api/ai/generate -> /api/v1/ai/generate
+async function handleAiGenerate(req, res) {
+  try {
+    const topic = String(req.body?.topic ?? "").trim() || "anything";
+    const n = Math.max(1, Math.min(20, Number(req.body?.n ?? 5)));
+    const items = await AIGenerator.generateQuestions(topic, n);
+    res.json({ ok: true, items });
+  } catch (err) {
+    const msg = err?.message || "AI generation failed";
+    console.error("Route /ai/generate failed:", msg);
+    res.status(500).json({ ok: false, error: msg });
+  }
+}
+
+app.post("/api/v1/ai/generate", handleAiGenerate);
+app.post("/api/ai/generate", handleAiGenerate); // optional alias for older frontend
+// 404 catcher with logging
+app.use((req, res) => {
+  console.warn("No route matched:", req.method, req.originalUrl);
+  res.status(404).json({ ok: false, error: "Not found", path: req.originalUrl });
+});
+
+app.listen(8080, () => console.log("API Gateway running on http://localhost:8080"));
 
 // -----------------------------
 // VOTES & LEADERBOARD (proxy verso voting-service)
