@@ -3,6 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import "./styles.css"; // (se presente nel tuo progetto)
+import { getGroup } from "@/lib/api";
+
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
@@ -17,6 +19,7 @@ const Step2Page = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const groupId = searchParams.get("groupId"); // passato da step1
+  const joinCode = searchParams.get("joinCode") || "";
 
   const [search, setSearch] = useState("");
   const [categories, setCategories] = useState<string[]>(initialCategories);
@@ -34,25 +37,21 @@ const Step2Page = () => {
   useEffect(() => {
     if (!groupId) return;
 
-    // 1) prova a prendere dal server (se esiste la proprietà categories)
     (async () => {
       try {
-        const r = await fetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}`, { cache: "no-store" });
-        if (r.ok) {
-          const g = await r.json();
-          if (Array.isArray(g?.categories) && g.categories.length > 0) {
-            // unisci l’elenco base con eventuali nuove categorie dal server
-            setCategories(prev => Array.from(new Set([...prev, ...g.categories])));
-            // pre-seleziona quelle già assegnate al gruppo
-            setSelectedCategories(Array.from(new Set(g.categories)));
-            return;
-          }
+        // usa l'helper che normalizza la risposta
+        const g = await getGroup(groupId);
+
+        if (Array.isArray(g?.categories) && g.categories.length > 0) {
+          setCategories(prev => Array.from(new Set([...prev, ...g.categories!])));
+          setSelectedCategories(Array.from(new Set(g.categories!)));
+          return;
         }
       } catch {
-        // ignora: passeremo al fallback
+        // ignora → passeremo al fallback localStorage
       }
 
-      // 2) fallback: prova da localStorage
+      // fallback: prova da localStorage
       if (typeof window !== "undefined") {
         const raw = localStorage.getItem(STORAGE_KEY(groupId));
         if (raw) {
@@ -67,6 +66,7 @@ const Step2Page = () => {
       }
     })();
   }, [groupId]);
+
 
   const filtered = useMemo(
     () => categories.filter(c => c.toLowerCase().includes(search.toLowerCase())),
@@ -113,19 +113,24 @@ const Step2Page = () => {
       });
 
       if (res.ok) {
-        // ok: route esistente
-        console.log("Group ID:", groupId);
-        router.push(`/crea-gruppo/success?groupId=${encodeURIComponent(groupId)}`);
+        const q = new URLSearchParams({
+          groupId,
+          ...(joinCode ? { joinCode } : {}),
+        } as any).toString();
+        router.push(`/crea-gruppo/success?${q}`);
         return;
       }
-
-      // Se la route non esiste ancora nel tuo gateway mock (404),
-      // salva in localStorage come fallback, così il flusso continua.
+      // fallback 404 → localStorage
       if (res.status === 404) {
         if (typeof window !== "undefined") {
           localStorage.setItem(STORAGE_KEY(groupId), JSON.stringify(selectedCategories));
         }
-        router.push(`/crea-gruppo/success?groupId=${encodeURIComponent(groupId)}&saved=local`);
+        const q = new URLSearchParams({
+          groupId,
+          saved: "local",
+          ...(joinCode ? { joinCode } : {}),
+        } as any).toString();
+        router.push(`/crea-gruppo/success?${q}`);
         return;
       }
 

@@ -1,11 +1,23 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useCallback } from 'react';
 
 export default function SuccessPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const groupId = searchParams.get("groupId");
+  const sp = useSearchParams();
+  const groupId  = sp.get("groupId")  ?? "";
+  const joinCode = sp.get("joinCode") ?? "";
+
+  const copy = useCallback(async () => {
+    if (!joinCode) return;
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      alert("Codice copiato!");
+    } catch {
+      alert("Impossibile copiare il codice 😅");
+    }
+  }, [joinCode]);
 
   const styles: { [key: string]: React.CSSProperties } = {
     container: {
@@ -22,9 +34,15 @@ export default function SuccessPage() {
       fontSize: '24px',
       fontWeight: 'bold',
       color: '#333',
-      marginBottom: '30px',
+      marginBottom: '14px',
     },
-    row: { display: "flex", gap: 10 },
+    code: {
+      fontSize: 28,
+      fontWeight: 800,
+      letterSpacing: 4,
+      margin: '4px 0 18px',
+    },
+    row: { display: "flex", gap: 10, flexWrap: 'wrap', justifyContent:'center' },
     button: {
       padding: '12px 24px',
       fontSize: '16px',
@@ -48,7 +66,15 @@ export default function SuccessPage() {
   return (
     <div style={styles.container}>
       <p style={styles.message}>Gruppo creato con successo!</p>
+
+      <div style={{color:'#555', marginBottom: 6}}>Condividi questo codice per far entrare i membri:</div>
+      <div style={styles.code}>{joinCode || '— — — — — —'}</div>
+
       <div style={styles.row}>
+        <button style={styles.secondary} onClick={copy}>Copia codice</button>
+        <button style={styles.secondary} onClick={() => router.push('/unisciti-gruppo')}>
+          Vai a “Unisciti al gruppo”
+        </button>
         <button style={styles.button} onClick={() => router.push('/home')}>
           Vai alla Home
         </button>
@@ -58,6 +84,8 @@ export default function SuccessPage() {
           </button>
         )}
       </div>
+
+      <p style={{ marginTop: 12, fontSize: 12, color: '#777' }}>ID gruppo: {groupId}</p>
     </div>
   );
 }

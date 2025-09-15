@@ -50,14 +50,13 @@ app.get("/", (_req, res) => res.json({ ok: true, service: "api-gateway" }));
 
 
 // -----------------------------
-// Config microservizi
+// Config microservizi (nomi di servizio Docker)
 // -----------------------------
 const SERVICES = {
   USER: "http://user-service:4001",
   AUTH: "http://auth-service:4000",
   QUESTION: "http://question-service:4002",
   VOTING: "http://voting-service:4003",
-  NOTIFICATION: "http://notification-service:4004",
 };
 
 // -----------------------------
@@ -94,13 +93,27 @@ app.get("/api/auth/health", async (_req, res) => {
     const data = ct.includes("application/json") ? JSON.parse(body) : { ok: r.ok, raw: body.slice(0, 120) };
     res.status(r.status).json(data);
   } catch (err) {
-    res.status(502).json({ ok: false, error: "auth-service unreachable", detail: err.message });
+    res.status(502).json({ ok: false, error: "auth-service unreachable", detail: String(err?.message || err) });
   }
 });
 
 
+app.get("/api/auth/health", async (_req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.AUTH}/health`);
+    const ct = r.headers.get("content-type") || "";
+    const body = await r.text();
+    const data = ct.includes("application/json")
+      ? JSON.parse(body)
+      : { ok: r.ok, raw: body.slice(0, 120) };
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "auth-service unreachable", detail: String(err?.message || err) });
+  }
+});
+
 // -----------------------------
-// AUTH
+// AUTH (gestite qui per emettere token "token-<userId>-<ts>")
 // -----------------------------
 // api-gateway/server.js
 
@@ -192,7 +205,17 @@ app.post("/api/auth/register", async (req, res) => {
       return { ok: r.ok, raw: txt };
     }
 
-    // 1️⃣ users
+    // helper: prova a leggere JSON, altrimenti restituisce text grezzo
+    async function parseMaybeJson(r) {
+      const ct = r.headers.get("content-type") || "";
+      const txt = await r.text(); // lo stream si legge UNA sola volta
+      if (ct.includes("application/json")) {
+        try { return JSON.parse(txt); } catch { /* fallback sotto */ }
+      }
+      return { ok: r.ok, raw: txt };
+    }
+
+    // 1) crea utente su user-service
     const rUser = await fetch(`${SERVICES.USER}/users`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -204,7 +227,7 @@ app.post("/api/auth/register", async (req, res) => {
     }
     const user = userData; // ci aspettiamo un oggetto { id, ... }
 
-    // 2️⃣ auth/passwords
+    // 2) registra password su auth-service
     const rPw = await fetch(`${SERVICES.AUTH}/passwords`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -221,7 +244,7 @@ app.post("/api/auth/register", async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    return res.status(500).json({ ok: false, error: err?.message || "Internal error" });
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
 
@@ -231,16 +254,13 @@ app.post("/api/auth/login", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Trova utente su user-service
+    // trova utente su user-service
     const usersR = await fetch(`${SERVICES.USER}/users`);
     const users = await usersR.json();
-    const user = users.find((u) => u.email === email);
+    const user = (Array.isArray(users) ? users : []).find((u) => u.email === email);
     if (!user) return res.status(401).json({ ok: false, error: "User not found" });
 
-    console.log("User logged in:", user.id);
-
-
-    // Verifica password su auth-service
+    // valida password su auth-service
     const authR = await fetch(`${SERVICES.AUTH}/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -248,26 +268,32 @@ app.post("/api/auth/login", async (req, res) => {
     });
     if (!authR.ok) return res.status(401).json({ ok: false, error: "Invalid credentials" });
 
-    // Token fittizio
+    // emetti token fittizio
     const token = `token-${user.id}-${Date.now()}`;
     res.json({ ok: true, user, token });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
 
-// Middleware per simulare autenticazione
-// Middleware per simulare autenticazione
-app.use((req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer token-")) {
-    const parts = authHeader.replace("Bearer ", "").split("-");
-    // token-userId-timestamp
-    const userIdParts = parts.slice(1, parts.length - 1);
-    req.userId = userIdParts.join("-"); // <-- adesso è l'ID corretto
-  }
+// -----------------------------
+// Auth middleware per /api (escluso /api/auth/*)
+// Estrae userId da token "token-<userId>-<ts>"
+// -----------------------------
+function authRequired(req, res, next) {
+  const h = req.headers.authorization || "";
+  const token = h.startsWith("Bearer ") ? h.slice(7) : "";
+  if (!token) return res.status(401).json({ ok: false, error: "Missing token" });
+  if (!token.startsWith("token-")) return res.status(401).json({ ok: false, error: "Invalid token" });
+
+  // token-userId-ts → ricompone userId nel caso contenga trattini (UUID)
+  const parts = token.split("-");
+  if (parts.length < 3) return res.status(401).json({ ok: false, error: "Invalid token format" });
+  // rimuovi "token" e l'ultimo elemento (timestamp)
+  const userId = parts.slice(1, -1).join("-");
+  req.userId = userId;
   next();
-});
+}
 
 // -----------------------------
 // USERS
@@ -276,45 +302,49 @@ app.get("/api/users/:userId/profile", async (req, res) => {
   try {
     const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}`);
     const profile = await r.json();
-    // Aggiungi username, firstName, lastName se non presenti
-    res.json({ ok: true, profile: {
-      id: profile.id,
-      email: profile.email,
-      username: profile.name,      // o profile.username a seconda del DB
-      avatarUrl: profile.avatarUrl || null,
-    }});
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
-});
-
-
-app.put("/api/users/:userId/profile", async (req, res) => {
-  try {
-    const { username, avatarUrl } = req.body;
-
-    const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}/profile`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: username, avatarUrl }), // <-- manda name
-    });
-
-    const updated = await r.json();
-
     res.json({
       ok: true,
       profile: {
-        id: updated.id,
-        email: updated.email,
-        username: updated.name, // <-- mappa name su username
-        avatarUrl: updated.avatarUrl || "",
+        id: profile.id,
+        email: profile.email,
+        username: profile.name,
+        avatarUrl: profile.avatarUrl || null,
       },
     });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
 
+app.put("/api/users/:userId/profile", authRequired, async (req, res) => {
+  try {
+    const { username, avatarUrl } = req.body;
+    const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}/profile`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: username, avatarUrl }),
+    });
+    const data = await r.json();
+    res.status(r.status).json(
+      r.ok
+        ? { ok: true, profile: { id: data.id, email: data.email, username: data.name, avatarUrl: data.avatarUrl || "" } }
+        : data
+    );
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
+  }
+});
+
+// 🔥 AGGIUNTA: inoltra al user-service la lista gruppi dell’utente
+app.get("/api/users/:userId/groups", authRequired, async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}/groups`);
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "user-service unreachable" });
+  }
+});
 
 // -----------------------------
 // GROUPS
@@ -323,46 +353,35 @@ app.get("/api/groups", async (_req, res) => {
   try {
     const r = await fetch(`${SERVICES.USER}/groups`);
     const data = await r.json();
-    res.json(data);
+    res.status(r.status).json(data);
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(502).json({ ok: false, error: "user-service unreachable" });
   }
 });
 
-app.post("/api/groups", async (req, res) => {
+app.post("/api/groups", authRequired, async (req, res) => {
   try {
-    console.log("Auth header:", req.headers.authorization);
-    console.log("UserId from middleware:", req.userId);
-    const leaderId = req.userId; // prendo ID dall'utente autenticato
-
-    if (!leaderId) return res.status(401).json({ ok: false, error: "Not authenticated" });
-
+    const leaderId = req.userId;
     const r = await fetch(`${SERVICES.USER}/groups`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...req.body, leaderId }),
     });
-    const group = await r.json();
-    console.log("user-service response:", group);
-    res.status(201).json({
-      ok: true,
-      group: group?.group ?? group, // se user-service risponde { ok, group }, prendi solo group
-    });
+    const data = await r.json();
+    const group = data?.group ?? data;
+    res.status(r.ok ? 201 : r.status).json(r.ok ? { ok: true, group } : data);
   } catch (err) {
-    console.log("Creating group with leaderId:", leaderId);
-    console.error(err);
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: String(err?.message || err) });
   }
 });
 
 app.get("/api/groups/:groupId", async (req, res) => {
   try {
     const r = await fetch(`${SERVICES.USER}/groups/${req.params.groupId}`);
-    const group = await r.json();
-    if (!group) return res.status(404).json({ ok: false, error: "Group not found" });
-    res.json({ ok: true, group });
+    const data = await r.json();
+    res.status(r.status).json(data);
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(502).json({ ok: false, error: "user-service unreachable" });
   }
 });
 
@@ -370,49 +389,46 @@ app.get("/api/groups/:groupId/members", async (req, res) => {
   try {
     const r = await fetch(`${SERVICES.USER}/groups/${req.params.groupId}/members`);
     const data = await r.json();
-
-    // Normalizza in array
-    let members;
-    if (Array.isArray(data)) {
-      members = data;
-    } else if (Array.isArray(data.members)) {
-      members = data.members;
-    } else {
-      members = [];
-    }
-
-    res.json(members); // <-- manda direttamente l’array
+    res.status(r.status).json(Array.isArray(data) ? data : data.members || []);
   } catch (err) {
-    res.status(500).json({ ok: false, error: "Errore membri" });
+    res.status(502).json({ ok: false, error: "user-service unreachable" });
   }
 });
 
+// Join via codice (richiede auth per sapere chi entra)
+app.post("/api/groups/join", authRequired, async (req, res) => {
+  try {
+    const { code } = req.body || {};
+    const userId = req.userId;
+    const r = await fetch(`${SERVICES.USER}/groups/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, userId }),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "user-service unreachable" });
+  }
+});
 
-// Pending question di un gruppo
+// -----------------------------
+// QUESTIONS (facoltativo)
+// -----------------------------
 app.get("/api/groups/:groupId/pending-question", async (req, res) => {
   try {
-    const { groupId } = req.params;
-
-    // inoltra al question-service
-    const r = await fetch(`${SERVICES.QUESTION}/questions/active/${groupId}`);
-    const questions = await r.json();
-
-    // normalizza in formato atteso dal frontend (PendingQuestionResponse)
-    if (!Array.isArray(questions) || questions.length === 0) {
-      return res.json({ hasPending: false });
-    }
-
-    const q = questions[0]; // prendi la più recente
-    return res.json({ hasPending: true, question: q });
+    const r = await fetch(`${SERVICES.QUESTION}/questions/active/${req.params.groupId}`);
+    const data = await r.json();
+    if (!Array.isArray(data) || data.length === 0) return res.json({ hasPending: false });
+    const q = data[0];
+    res.json({ hasPending: true, question: q });
   } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(502).json({ ok: false, error: "question-service unreachable" });
   }
 });
 
-// POST nuova domanda
-app.post("/api/questions", async (req, res) => {
+app.post("/api/questions", authRequired, async (req, res) => {
   try {
-    console.log("API Gateway POST /api/questions body:", req.body); 
     const r = await fetch(`${SERVICES.QUESTION}/questions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -421,8 +437,7 @@ app.post("/api/questions", async (req, res) => {
     const data = await r.json();
     res.status(r.status).json(data);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(502).json({ ok: false, error: "question-service unreachable" });
   }
 });
 
@@ -470,20 +485,16 @@ app.listen(8080, () => console.log("API Gateway running on http://localhost:8080
 
 
 // -----------------------------
-// ❗️Handler 404 JSON (in fondo, dopo tutte le route)
+// 404 & error handler
 // -----------------------------
 app.use((req, res) => {
   res.status(404).type("application/json").send({ ok: false, error: "Not found", path: req.path });
 });
 
-// -----------------------------
-// ❗️Error handler JSON (sempre in fondo)
-// -----------------------------
 app.use((err, req, res, _next) => {
   console.error("Gateway error:", err);
   res.status(err.status || 500).type("application/json").send({ ok: false, error: err.message || "Internal error" });
 });
-
 
 // -----------------------------
 // BOOT

@@ -1,19 +1,16 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
+import { getUserGroups, getPendingQuestion, getCurrentUserId } from "@/lib/api";
 
 type Group = {
   id: string;
   name: string;
+  joinCode?: string;
   hasNewQuestion?: boolean;
 };
-
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
-
-const CURRENT_USER_ID = "u7"; // TODO: prendi da auth quando disponibile
 
 export default function HomePage() {
   const router = useRouter();
@@ -21,56 +18,53 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // carico gruppi dal gateway
   useEffect(() => {
-    let active = true;
+    let alive = true;
 
-    async function load() {
+    (async () => {
+      // ✅ Controllo auth lato client
+      const token =
+        typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+      const uid = getCurrentUserId();
+
+      if (!token || !uid) {
+        // niente token → vai al login
+        router.replace("/login?next=/home");
+        return;
+      }
+
       try {
         setError(null);
         setLoading(true);
 
-        const res = await fetch(`${API_BASE}/api/groups`, { cache: "no-store" });
-        if (!res.ok) throw new Error(await res.text());
+        // 1) gruppi dell’utente (passa per il gateway con Authorization)
+        const list = await getUserGroups(uid);
 
-        const raw = await res.json();
-        // supporta sia [{...}] che {groups:[...]}
-        const list: Group[] = Array.isArray(raw) ? raw : raw?.groups ?? [];
-
-        // Se il gateway non fornisce "hasNewQuestion", possiamo calcolarlo
-        // interrogando /pending-question per ciascun gruppo (ok in dev, pochi gruppi).
+        // 2) opzionale: badge "New" calcolato interrogando pending-question
         const withFlags = await Promise.all(
           list.map(async (g) => {
             try {
-              const r = await fetch(
-                `${API_BASE}/api/groups/${g.id}/pending-question?userId=${encodeURIComponent(
-                  CURRENT_USER_ID
-                )}`,
-                { cache: "no-store" }
-              );
-              if (!r.ok) return g;
-              const data = await r.json();
-              return { ...g, hasNewQuestion: !!data?.hasPending };
+              const pq = await getPendingQuestion(g.id, uid);
+              return { ...g, hasNewQuestion: pq.hasPending === true };
             } catch {
               return g;
             }
           })
         );
 
-        if (active) setGroups(withFlags);
+        if (alive) setGroups(withFlags);
       } catch (e: any) {
         console.error("❌ Error fetching groups:", e);
-        if (active) setError("Impossibile caricare i gruppi dal Gateway.");
+        if (alive) setError(e?.message || "Impossibile caricare i gruppi");
       } finally {
-        if (active) setLoading(false);
+        if (alive) setLoading(false);
       }
-    }
+    })();
 
-    load();
     return () => {
-      active = false;
+      alive = false;
     };
-  }, []);
+  }, [router]);
 
   const goToGroup = (id: string) => router.push(`/gruppo/${id}`);
   const goCreate = () => router.push("/crea-gruppo");
@@ -82,12 +76,7 @@ export default function HomePage() {
       {/* Top bar */}
       <div style={styles.topbar}>
         <div style={styles.logo}>
-          <Image
-            src="/appiconexample.png"
-            alt="App Logo"
-            width={42}
-            height={42}
-          />
+          <Image src="/appiconexample.png" alt="App Logo" width={42} height={42} />
         </div>
 
         <button
@@ -96,30 +85,17 @@ export default function HomePage() {
           style={styles.profileBtn}
           aria-label="Open profile"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="22"
-            height="22"
-            fill="currentColor"
-            viewBox="0 0 24 24"
-          >
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
             <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" />
           </svg>
         </button>
       </div>
 
-      {/* Title */}
       <h1 style={styles.heading}>My groups</h1>
 
-      {/* Error / Loading */}
-      {error && (
-        <div style={styles.errorBox}>{error}</div>
-      )}
-      {loading && !error && (
-        <div style={styles.loadingBox}>Loading groups…</div>
-      )}
+      {error && <div style={styles.errorBox}>{error}</div>}
+      {loading && !error && <div style={styles.loadingBox}>Loading groups…</div>}
 
-      {/* Groups list */}
       {!loading && !error && (
         <div style={styles.groupList}>
           {groups.map((g) => (
@@ -142,7 +118,6 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Actions */}
       <div style={styles.actions}>
         <button type="button" onClick={goCreate} style={styles.primaryBtn}>
           <span style={styles.plus}>+</span> Create new group
@@ -196,7 +171,6 @@ const styles: { [k: string]: React.CSSProperties } = {
     justifyContent: "center",
     fontSize: "20px",
   },
-
   heading: {
     fontSize: "24px",
     fontWeight: "bold",

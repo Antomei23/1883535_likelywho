@@ -1,21 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { joinGroupByCode } from "@/lib/api";
 
 function getCurrentUserIdLocal(): string {
-  if (typeof window === "undefined") return "u7";
-  return localStorage.getItem("userId") || "u7";
-}
-function getCurrentUserNameLocal(): string | undefined {
-  if (typeof window === "undefined") return "Riccardo";
-  return localStorage.getItem("username") || localStorage.getItem("name") || "Player";
+  if (typeof window === "undefined") return "22222222-2222-2222-2222-222222222222"; // fallback dev
+  // prova varie chiavi usate nell'app
+  const direct = localStorage.getItem("userId");
+  if (direct) return direct;
+  try {
+    const cu = JSON.parse(localStorage.getItem("currentUser") || "{}");
+    if (cu?.id) return cu.id as string;
+  } catch {}
+  return "22222222-2222-2222-2222-222222222222"; // fallback dev
 }
 
-const UniscitiGruppoPage = () => {
+function getCurrentUserNameLocal(): string | undefined {
+  if (typeof window === "undefined") return "Player";
+  return localStorage.getItem("username")
+    || localStorage.getItem("name")
+    || JSON.parse(localStorage.getItem("currentUser") || "{}")?.username
+    || "Player";
+}
+
+export default function UniscitiGruppoPage() {
   const router = useRouter();
-  const [codice, setCodice] = useState("");
+  const sp = useSearchParams();
+  const prefill = (sp.get("code") || "").toUpperCase();
+
+  const [codice, setCodice] = useState(prefill);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -24,15 +38,16 @@ const UniscitiGruppoPage = () => {
     setError("");
     setLoading(true);
     try {
-      const res = await joinGroupByCode(codice.trim(), getCurrentUserIdLocal(), getCurrentUserNameLocal());
-      if ("ok" in res && res.ok) {
-        // opzionale: potresti passare groupId in query alla success page
-        router.push("/unisciti-gruppo/success");
+      const code = codice.trim().toUpperCase();
+      const res = await joinGroupByCode(code, getCurrentUserIdLocal(), getCurrentUserNameLocal());
+      if (res?.ok && res.groupId) {
+        // porta alla success passando anche il codice, così lo mostriamo
+        router.push(`/unisciti-gruppo/success?groupId=${encodeURIComponent(res.groupId)}&code=${encodeURIComponent(code)}`);
       } else {
-        setError((res as any).error ?? "Unable to join group");
+        setError(res?.error ?? "Codice non valido");
       }
     } catch (err: any) {
-      setError(err?.message ?? "Unable to join group");
+      setError(err?.message ?? "Impossibile unirsi al gruppo");
     } finally {
       setLoading(false);
     }
@@ -41,26 +56,27 @@ const UniscitiGruppoPage = () => {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <h2 style={styles.title}>Join a new group</h2>
+        <h2 style={styles.title}>Unisciti a un gruppo</h2>
         <form onSubmit={handleSubmit} style={styles.form}>
-          <label>Insert invitation code:</label>
+          <label>Inserisci il codice di invito:</label>
           <input
             type="text"
             value={codice}
-            onChange={(e) => setCodice(e.target.value)}
+            onChange={(e) => setCodice(e.target.value.toUpperCase())}
             required
+            maxLength={12}
             style={styles.input}
-            placeholder="e.g. 9K4XQZ"
+            placeholder="es. 9K4XQZ"
           />
           {error && <p style={styles.error}>{error}</p>}
-          <button type="submit" style={styles.button} disabled={loading}>
-            {loading ? "Joining..." : "Join"}
+          <button type="submit" style={styles.button} disabled={loading || codice.trim().length < 4}>
+            {loading ? "Accesso..." : "Entra"}
           </button>
         </form>
       </div>
     </div>
   );
-};
+}
 
 const styles: { [key: string]: React.CSSProperties } = {
   container: {
@@ -102,5 +118,3 @@ const styles: { [key: string]: React.CSSProperties } = {
     cursor: "pointer",
   },
 };
-
-export default UniscitiGruppoPage;
