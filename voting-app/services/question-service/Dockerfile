@@ -1,34 +1,34 @@
-# --------------------
-# STEP 1: Builder
-# --------------------
+# ---------- builder ----------
 FROM node:20-bullseye AS builder
 WORKDIR /app
 
-# 1) Installa deps (anche devDeps: ci serve il CLI prisma locale)
+# Manifest
 COPY package.json package-lock.json* ./
-RUN npm ci --legacy-peer-deps
+RUN npm ci --legacy-peer-deps --include=dev
 
-# 2) Copia il codice (inclusa /prisma)
-COPY . .
+# Copia prisma e codice
+COPY prisma ./prisma
+COPY tsconfig.json ./
+COPY src ./src
 
-# 3) Genera Prisma Client usando il CLI locale (NO globale)
-RUN npx prisma generate
+# Prisma Client (scegline una riga)
+RUN npx prisma generate --schema=./prisma/schema.prisma
+# RUN npx -y prisma@5.22.0 generate --schema=./prisma/schema.prisma
 
-# 4) Compila TypeScript
-RUN npm run build
+# Build TS
+RUN npx tsc -p tsconfig.json
 
-# --------------------
-# STEP 2: Runner
-# --------------------
+# ---------- runner ----------
 FROM node:20-bullseye AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copia tutto ciò che serve a runtime
+# ✅ OGNI COPY HA SORGENTE E DESTINAZIONE
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/prisma       ./prisma
+COPY --from=builder /app/dist         ./dist
+COPY package.json package-lock.json* ./
 
-EXPOSE 4002
+RUN npm prune --omit=dev
+
 CMD ["node", "dist/index.js"]
