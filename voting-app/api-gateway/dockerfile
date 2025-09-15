@@ -8,7 +8,8 @@ COPY api-gateway/package*.json ./
 RUN npm install --production
 
 # Copia solo il file server.js di api-gateway
-COPY api-gateway/server.js ./server.js
+#COPY api-gateway/server.js ./server.js
+COPY api-gateway/ ./ 
 
 # Copia la cartella lib (fuori da api-gateway)
 COPY lib ./lib

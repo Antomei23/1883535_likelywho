@@ -2,11 +2,52 @@
 const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch"); // Node < 18, altrimenti fetch globale
+// Works whether ai-generator exports default or named
+const AIGenerator = require("./ai-generator");
 
 const app = express();
-//  app.use(cors());
-app.use(cors({ origin: ["http://localhost:3000", "http://localhost:5173"], credentials: true }));
+//app.use(cors({
+//  origin(origin, cb) {
+//    if (!origin) return cb(null, true); // SSR / curl / same-origin
+//    if (allowed.some(re => re.test(origin))) return cb(null, true);
+//    return cb(new Error("Not allowed by CORS"));
+//  },
+//  credentials: true,
+//  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+//  allowedHeaders: ["Content-Type", "Authorization"],
+//}));
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // SSR/curl/health-check
+    if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return cb(null, true);
+    return cb(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"]
+}));
+
+// ⚠️ Express 5: niente pattern con "*" negli OPTIONS.
+// Preflight generico per tutte le richieste.
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
+// Body parser JSON
 app.use(express.json());
+
+// Health check per test da browser
+app.get("/", (_req, res) => res.json({ ok: true, service: "api-gateway" }));
+
+//  app.use(cors());
+//app.use(cors({ origin: ["http://localhost:3000", "http://localhost:5173"], credentials: true }));
+//app.use(express.json());
+
+//*************** Carlotta */
+//const allowed = [/^http:\/\/localhost:(3000|5173)$/, /^http:\/\/127\.0\.0\.1:(3000|5173)$/];
+
 
 // -----------------------------
 // Config microservizi
@@ -25,6 +66,22 @@ const SERVICES = {
 app.get("/health", (_req, res) => {
   res.json({ ok: true, service: "api-gateway" });
 });
+
+// AGGIUNTA!! 
+// Health per AUTH (inoltra a /health del servizio)
+app.get("/api/auth/health", async (_req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.AUTH}/health`);
+    const ct = r.headers.get("content-type") || "";
+    const body = await r.text();
+    // se il servizio risponde HTML, normalizza comunque a JSON
+    const data = ct.includes("application/json") ? JSON.parse(body) : { ok: r.ok, raw: body.slice(0, 120) };
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "auth-service unreachable", detail: err.message });
+  }
+});
+
 
 // AGGIUNTA!! 
 // Health per AUTH (inoltra a /health del servizio)
@@ -82,11 +139,57 @@ app.get("/api/auth/health", async (_req, res) => {
 //   }
 // });
 
+
+// app.post("/api/auth/register", async (req, res) => {
+//   try {
+//     const { email, username, password } = req.body;
+
+//     if (!email || !username || !password) {
+//       return res.status(400).json({ ok: false, error: "Email, username e password richiesti" });
+//     }
+
+//     // 1️⃣ Creazione utente su user-service
+//     const rUser = await fetch(`${SERVICES.USER}/users`, {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({ email, name: username }),
+//     });
+//     const user = await rUser.json();
+//     if (!rUser.ok) return res.status(rUser.status).json(user);
+
+//     // 2️⃣ Creazione password su auth-service
+//     const rPw = await fetch(`${SERVICES.AUTH}/passwords`, {
+//       method: "POST",
+//       headers: { "Content-Type": "application/json" },
+//       body: JSON.stringify({ userId: user.id, password }),
+//     });
+//     if (!rPw.ok) return res.status(rPw.status).json(await rPw.json());
+
+//     // 3️⃣ Token fittizio (per ora)
+//     const token = `token-${user.id}-${Date.now()}`;
+
+//     res.status(201).json({ ok: true, user, token });
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ ok: false, error: err.message });
+//   }
+// });
+
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { email, username, password } = req.body;
     if (!email || !username || !password) {
       return res.status(400).json({ ok: false, error: "Email, username e password richiesti" });
+    }
+
+    // helper: prova a leggere JSON, altrimenti restituisce text grezzo
+    async function parseMaybeJson(r) {
+      const ct = r.headers.get("content-type") || "";
+      const txt = await r.text(); // lo stream si legge UNA sola volta
+      if (ct.includes("application/json")) {
+        try { return JSON.parse(txt); } catch { /* fallback sotto */ }
+      }
+      return { ok: r.ok, raw: txt };
     }
 
     // 1️⃣ users
@@ -95,10 +198,11 @@ app.post("/api/auth/register", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email, name: username }),
     });
-    const userCt = rUser.headers.get("content-type") || "";
-    const userTxt = await rUser.text();
-    const user = userCt.includes("application/json") ? JSON.parse(userTxt) : { ok: rUser.ok, raw: userTxt };
-    if (!rUser.ok) return res.status(rUser.status).json(user);
+    const userData = await parseMaybeJson(rUser);
+    if (!rUser.ok) {
+      return res.status(rUser.status).json(userData);
+    }
+    const user = userData; // ci aspettiamo un oggetto { id, ... }
 
     // 2️⃣ auth/passwords
     const rPw = await fetch(`${SERVICES.AUTH}/passwords`, {
@@ -106,18 +210,21 @@ app.post("/api/auth/register", async (req, res) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: user.id, password }),
     });
-    const pwCt = rPw.headers.get("content-type") || "";
-    const pwTxt = await rPw.text();
-    const pw = pwCt.includes("application/json") ? JSON.parse(pwTxt) : { ok: rPw.ok, raw: pwTxt };
-    if (!rPw.ok) return res.status(rPw.status).json(pw);
+    const pwData = await parseMaybeJson(rPw);
+    if (!rPw.ok) {
+      return res.status(rPw.status).json(pwData);
+    }
 
+    // 3️⃣ risposta finale
     const token = `token-${user.id}-${Date.now()}`;
-    res.status(201).json({ ok: true, user, token });
+    return res.status(201).json({ ok: true, user, token });
+
   } catch (err) {
     console.error(err);
-    res.status(500).json({ ok: false, error: err.message });
+    return res.status(500).json({ ok: false, error: err?.message || "Internal error" });
   }
 });
+
 
 
 app.post("/api/auth/login", async (req, res) => {
@@ -319,6 +426,46 @@ app.post("/api/questions", async (req, res) => {
   }
 });
 
+// POST /api/v1/ai/generate   { topic?: string, n?: number }
+app.post("/api/v1/ai/generate", async (req, res) => {
+  try {
+    //const topic = String(req.body?.topic ?? "").trim() || "anything";
+    //const n = Math.max(1, Math.min(20, Number(req.body?.n ?? 5)));
+    //const items = await AIGenerator.generateQuestions(topic, n);
+    //res.json({ ok: true, items });
+    const topic = String(req.query.topic || "anything");
+    const n = Number(req.query.n || 3);
+    const items = await AIGenerator.generateQuestions(topic, n);
+    res.json({ ok: true, items });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "AI generation failed" });
+  }
+});
+
+// Alias /api/ai/generate -> /api/v1/ai/generate
+async function handleAiGenerate(req, res) {
+  try {
+    const topic = String(req.body?.topic ?? "").trim() || "anything";
+    const n = Math.max(1, Math.min(20, Number(req.body?.n ?? 5)));
+    const items = await AIGenerator.generateQuestions(topic, n);
+    res.json({ ok: true, items });
+  } catch (err) {
+    const msg = err?.message || "AI generation failed";
+    console.error("Route /ai/generate failed:", msg);
+    res.status(500).json({ ok: false, error: msg });
+  }
+}
+
+app.post("/api/v1/ai/generate", handleAiGenerate);
+app.post("/api/ai/generate", handleAiGenerate); // optional alias for older frontend
+// 404 catcher with logging
+app.use((req, res) => {
+  console.warn("No route matched:", req.method, req.originalUrl);
+  res.status(404).json({ ok: false, error: "Not found", path: req.originalUrl });
+});
+
+app.listen(8080, () => console.log("API Gateway running on http://localhost:8080"));
 
 
 
@@ -342,4 +489,4 @@ app.use((err, req, res, _next) => {
 // BOOT
 // -----------------------------
 const PORT = 8080;
-app.listen(PORT, () => console.log(`✅ API Gateway running on http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`API Gateway running on http://localhost:${PORT}`));

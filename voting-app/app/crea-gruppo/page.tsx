@@ -2,61 +2,60 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE, createGroup } from "@/lib/api";
+import { API_BASE, createGroup } from "@/lib/api"; 
 
 const CreaGruppoPage = () => {
   const router = useRouter();
   const [groupName, setGroupName] = useState("");
-  const [notificationTime, setNotificationTime] = useState<"morning" | "midday" | "afternoon" | "evening">("morning");
+  const [notificationTime, setNotificationTime] =
+    useState<"morning" | "midday" | "afternoon" | "evening">("morning");
   const [disableSelfVote, setDisableSelfVote] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
 
-  e.preventDefault();
-  setError(null);
-  if (!groupName.trim()) {
-    setError("Inserisci un nome per il gruppo.");
-    return;
-  }
-
-  try {
-    setSubmitting(true);
-
-    // Prendi il token dal localStorage
-    const token = localStorage.getItem("accessToken");
-    console.log("Token:", token); // <- controllo formato
-    if (!token) {
-      setError("Utente non autenticato.");
-      setSubmitting(false);
+    if (!groupName.trim()) {
+      setError("Inserisci un nome per il gruppo.");
       return;
     }
 
-    // Invia direttamente la richiesta con il token
-    const data = await createGroup({
-      name: groupName.trim(),
-      notificationTime,
-      disableSelfVote,
-    });
-    console.log("createGroup response:", data);
-    console.log("data.group:", data.group);
-    console.log("data.group.id:", data.group?.id);
+    try {
+      setSubmitting(true);
 
+      // 👇 Passiamo SEMPRE themes: [] per compatibilità con il nuovo schema
+      const data = await createGroup({
+        name: groupName.trim(),
+        notificationTime,
+        disableSelfVote,
+        themes: [], // <— importante
+      });
 
-    if (!data?.ok || !data?.group?.id) {
-      throw new Error(data?.error || "Creazione gruppo fallita");
+      // ci aspettiamo { ok: true, group: { id, joinCode? } }
+      const groupId =
+        data?.group?.id ??
+        data?.id ?? // fallback se il backend restituisce direttamente l'oggetto
+        data?.groupId;
+
+      if (!groupId) {
+        throw new Error("Creazione gruppo riuscita ma manca group.id nella risposta");
+      }
+
+      const q = new URLSearchParams({
+        groupId,
+        ...(data.group?.joinCode ? { joinCode: data.group.joinCode } : {}),
+      }).toString();
+
+      router.push(`/crea-gruppo/step2?${q}`);
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || "Errore nella creazione del gruppo. Riprova.");
+    } finally {
+      setSubmitting(false);
     }
-
-    router.push(`/crea-gruppo/step2?groupId=${encodeURIComponent(data.group.id)}`);
-  } catch (err) {
-    console.error(err);
-    setError("Errore nella creazione del gruppo. Riprova.");
-  } finally {
-    setSubmitting(false);
-  }
-};
-
+  };
 
   return (
     <div style={styles.page}>
@@ -85,7 +84,9 @@ const CreaGruppoPage = () => {
           <option value="evening">Evening (8 PM)</option>
         </select>
 
-        <div>If you do not want a player to vote for him/her-self, then check the following box:</div>
+        <div>
+          If you do not want a player to vote for him/her-self, then check the following box:
+        </div>
         <div style={styles.checkboxContainer}>
           <input
             type="checkbox"
@@ -100,7 +101,11 @@ const CreaGruppoPage = () => {
 
         {error && <div style={styles.error}>{error}</div>}
 
-        <button type="submit" disabled={submitting} style={{ ...styles.button, opacity: submitting ? .6 : 1 }}>
+        <button
+          type="submit"
+          disabled={submitting}
+          style={{ ...styles.button, opacity: submitting ? 0.6 : 1 }}
+        >
           {submitting ? "Creating…" : "Continue"}
         </button>
       </form>

@@ -28,6 +28,8 @@ model Group {
   leader    User          @relation("LeaderGroups", fields: [leaderId], references: [id])
   members   Membership[]
   questions QuestionRef[]
+
+  themes   String[] @default([])  // lista di stringhe
 }
 
 model Membership {
@@ -48,6 +50,7 @@ model QuestionRef {
   groupId   String
   createdAt DateTime @default(now())
   Group     Group    @relation(fields: [groupId], references: [id])
+  theme     String?  // singola stringa opzionale
 
   @@index([groupId])
 }
