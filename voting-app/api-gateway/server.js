@@ -6,7 +6,12 @@ const cors = require("cors");
 const fetch = globalThis.fetch;
 
 const app = express();
-app.use(cors({ origin: ["http://localhost:3000", "http://localhost:5173"], credentials: true }));
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "http://localhost:5173"],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // -----------------------------
@@ -36,12 +41,14 @@ app.get("/api/auth/health", async (_req, res) => {
       : { ok: r.ok, raw: body.slice(0, 120) };
     res.status(r.status).json(data);
   } catch (err) {
-    res.status(502).json({ ok: false, error: "auth-service unreachable", detail: String(err?.message || err) });
+    res
+      .status(502)
+      .json({ ok: false, error: "auth-service unreachable", detail: String(err?.message || err) });
   }
 });
 
 // -----------------------------
-// AUTH (gestite qui per emettere token "token-<userId>-<ts>")
+// AUTH (emette token "token-<userId>-<ts>")
 // -----------------------------
 app.post("/api/auth/register", async (req, res) => {
   try {
@@ -162,7 +169,7 @@ app.put("/api/users/:userId/profile", authRequired, async (req, res) => {
   }
 });
 
-// 🔥 AGGIUNTA: inoltra al user-service la lista gruppi dell’utente
+// Lista gruppi dell’utente
 app.get("/api/users/:userId/groups", authRequired, async (req, res) => {
   try {
     const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}/groups`);
@@ -222,7 +229,7 @@ app.get("/api/groups/:groupId/members", async (req, res) => {
   }
 });
 
-// Join via codice (richiede auth per sapere chi entra)
+// Join via codice (richiede auth)
 app.post("/api/groups/join", authRequired, async (req, res) => {
   try {
     const { code } = req.body || {};
@@ -240,7 +247,7 @@ app.post("/api/groups/join", authRequired, async (req, res) => {
 });
 
 // -----------------------------
-// QUESTIONS (facoltativo)
+// QUESTIONS
 // -----------------------------
 app.get("/api/groups/:groupId/pending-question", async (req, res) => {
   try {
@@ -269,6 +276,45 @@ app.post("/api/questions", authRequired, async (req, res) => {
 });
 
 // -----------------------------
+// VOTES & LEADERBOARD (proxy verso voting-service)
+// -----------------------------
+app.post("/api/votes", authRequired, async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.VOTING}/votes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "voting-service unreachable" });
+  }
+});
+
+// risultati grezzi per una domanda (facoltativo)
+app.get("/api/votes/results/:questionId", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.VOTING}/votes/results/${req.params.questionId}`);
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "voting-service unreachable" });
+  }
+});
+
+// ✅ CORRETTO: inoltra alla rotta reale /leaderboard/:groupId del voting-service
+app.get("/api/groups/:groupId/leaderboard", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.VOTING}/leaderboard/${req.params.groupId}`);
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "voting-service unreachable" });
+  }
+});
+
+// -----------------------------
 // 404 & error handler
 // -----------------------------
 app.use((req, res) => {
@@ -277,7 +323,10 @@ app.use((req, res) => {
 
 app.use((err, req, res, _next) => {
   console.error("Gateway error:", err);
-  res.status(err.status || 500).type("application/json").send({ ok: false, error: err.message || "Internal error" });
+  res
+    .status(err.status || 500)
+    .type("application/json")
+    .send({ ok: false, error: err.message || "Internal error" });
 });
 
 // -----------------------------

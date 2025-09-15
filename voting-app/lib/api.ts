@@ -72,7 +72,13 @@ export type Group = {
   categories?: string[];
 };
 
-export type LeaderboardEntry = { userId: string; name: string; points: number };
+
+export type LeaderboardEntry = { 
+  userId: string; 
+  name: string; 
+  points: number 
+};
+
 export type LeaderboardResponse = {
   questionText: string;
   voted: string[];
@@ -220,6 +226,22 @@ export async function sendVote(payload: {
   if (!r.ok) return { ok: false, error: data?.error || "Vote failed" };
   return { ok: true };
 }
+
+// === Get group leaderboard ===
+// Accetta sia risposta come array puro, sia { ok:true, leaderboard:[...] }
+export async function getLeaderboard(groupId: string): Promise<LeaderboardEntry[]> {
+  const r = await fetch(
+    `${API_BASE}/api/groups/${encodeURIComponent(groupId)}/leaderboard`,
+    { cache: "no-store" }
+  );
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    throw new Error(data?.error || `HTTP ${r.status}`);
+  }
+  const arr = Array.isArray(data) ? data : (data?.leaderboard ?? []);
+  return (arr || []) as LeaderboardEntry[];
+}
+
 
 /* ─────────────────────────────────────────────────────
  * SCORES (se usato nella tua UI)

@@ -3,12 +3,15 @@
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "node",
-    "types": ["node"],          // <— aggiungi questa riga
+    "lib": ["ES2022"],
+    "types": ["node"],
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
     "esModuleInterop": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
   },
   "include": ["src/**/*.ts"]
 }
