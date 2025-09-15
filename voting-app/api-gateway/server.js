@@ -447,10 +447,10 @@ app.get("/api/votes/results/:questionId", async (req, res) => {
   }
 });
 
-// ✅ CORRETTO: inoltra alla rotta reale /leaderboard/:groupId del voting-service
-app.get("/api/groups/:groupId/leaderboard", async (req, res) => {
+
+app.get("/api/gruppo/:groupId/stats", async (req, res) => {
   try {
-    const r = await fetch(`${SERVICES.VOTING}/leaderboard/${req.params.groupId}`);
+    const r = await fetch(`${SERVICES.VOTING}/gruppo/${req.params.groupId}/stats`);
     const data = await r.json();
     res.status(r.status).json(data);
   } catch (err) {

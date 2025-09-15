@@ -76,7 +76,7 @@ export type Group = {
 export type LeaderboardEntry = { 
   userId: string; 
   name: string; 
-  points: number 
+  votes: number 
 };
 
 export type LeaderboardResponse = {
@@ -231,7 +231,7 @@ export async function sendVote(payload: {
 // Accetta sia risposta come array puro, sia { ok:true, leaderboard:[...] }
 export async function getLeaderboard(groupId: string): Promise<LeaderboardEntry[]> {
   const r = await fetch(
-    `${API_BASE}/api/groups/${encodeURIComponent(groupId)}/leaderboard`,
+    `${API_BASE}/api/gruppo/${groupId}/stats`,
     { cache: "no-store" }
   );
   const data = await r.json().catch(() => ({}));
