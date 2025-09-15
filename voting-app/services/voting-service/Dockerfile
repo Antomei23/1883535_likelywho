@@ -1,20 +1,27 @@
+# services/voting-service/Dockerfile
+
 # --------------------
 # STEP 1: Builder
 # --------------------
 FROM node:20-bullseye AS builder
 WORKDIR /app
 
-# 1) Installa deps (anche devDeps: ci serve il CLI prisma locale)
+# 0) Assicura che lo schema Prisma sia disponibile PRIMA di npm ci
+COPY prisma ./prisma
+
+# 1) Installa deps (devDeps incluse)
+#    Disattivo il "generate" nel postinstall di @prisma/client,
+#    lo faremo manualmente dopo.
 COPY package.json package-lock.json* ./
+ENV PRISMA_SKIP_POSTINSTALL_GENERATE=1
 RUN npm ci --legacy-peer-deps
 
-# 2) Copia il codice (inclusa /prisma)
-COPY . .
-
-# 3) Genera Prisma Client usando il CLI locale (NO globale)
+# 2) Genera Prisma Client ora che lo schema c'è
 RUN npx prisma generate
 
-# 4) Compila TypeScript
+# 3) Copia il resto del codice e builda
+COPY tsconfig.json ./
+COPY src ./src
 RUN npm run build
 
 # --------------------
@@ -24,7 +31,7 @@ FROM node:20-bullseye AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Copia tutto ciò che serve a runtime
+# Copia ciò che serve a runtime
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma

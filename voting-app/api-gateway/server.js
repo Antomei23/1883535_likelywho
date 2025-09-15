@@ -6,36 +6,12 @@ const fetch = require("node-fetch"); // Node < 18, altrimenti fetch globale
 const AIGenerator = require("./ai-generator");
 
 const app = express();
-//app.use(cors({
-//  origin(origin, cb) {
-//    if (!origin) return cb(null, true); // SSR / curl / same-origin
-//    if (allowed.some(re => re.test(origin))) return cb(null, true);
-//    return cb(new Error("Not allowed by CORS"));
-//  },
-//  credentials: true,
-//  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-//  allowedHeaders: ["Content-Type", "Authorization"],
-//}));
-
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // SSR/curl/health-check
-    if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) return cb(null, true);
-    return cb(new Error("Not allowed by CORS"));
-  },
-  credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Content-Type","Authorization"]
-}));
-
-// ⚠️ Express 5: niente pattern con "*" negli OPTIONS.
-// Preflight generico per tutte le richieste.
-app.use((req, res, next) => {
-  if (req.method === "OPTIONS") return res.sendStatus(204);
-  next();
-});
-
-// Body parser JSON
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "http://localhost:5173"],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // Health check per test da browser
@@ -108,12 +84,14 @@ app.get("/api/auth/health", async (_req, res) => {
       : { ok: r.ok, raw: body.slice(0, 120) };
     res.status(r.status).json(data);
   } catch (err) {
-    res.status(502).json({ ok: false, error: "auth-service unreachable", detail: String(err?.message || err) });
+    res
+      .status(502)
+      .json({ ok: false, error: "auth-service unreachable", detail: String(err?.message || err) });
   }
 });
 
 // -----------------------------
-// AUTH (gestite qui per emettere token "token-<userId>-<ts>")
+// AUTH (emette token "token-<userId>-<ts>")
 // -----------------------------
 // api-gateway/server.js
 
@@ -335,7 +313,7 @@ app.put("/api/users/:userId/profile", authRequired, async (req, res) => {
   }
 });
 
-// 🔥 AGGIUNTA: inoltra al user-service la lista gruppi dell’utente
+// Lista gruppi dell’utente
 app.get("/api/users/:userId/groups", authRequired, async (req, res) => {
   try {
     const r = await fetch(`${SERVICES.USER}/users/${req.params.userId}/groups`);
@@ -395,7 +373,7 @@ app.get("/api/groups/:groupId/members", async (req, res) => {
   }
 });
 
-// Join via codice (richiede auth per sapere chi entra)
+// Join via codice (richiede auth)
 app.post("/api/groups/join", authRequired, async (req, res) => {
   try {
     const { code } = req.body || {};
@@ -413,7 +391,7 @@ app.post("/api/groups/join", authRequired, async (req, res) => {
 });
 
 // -----------------------------
-// QUESTIONS (facoltativo)
+// QUESTIONS
 // -----------------------------
 app.get("/api/groups/:groupId/pending-question", async (req, res) => {
   try {
@@ -441,48 +419,44 @@ app.post("/api/questions", authRequired, async (req, res) => {
   }
 });
 
-// POST /api/v1/ai/generate   { topic?: string, n?: number }
-app.post("/api/v1/ai/generate", async (req, res) => {
+// -----------------------------
+// VOTES & LEADERBOARD (proxy verso voting-service)
+// -----------------------------
+app.post("/api/votes", authRequired, async (req, res) => {
   try {
-    //const topic = String(req.body?.topic ?? "").trim() || "anything";
-    //const n = Math.max(1, Math.min(20, Number(req.body?.n ?? 5)));
-    //const items = await AIGenerator.generateQuestions(topic, n);
-    //res.json({ ok: true, items });
-    const topic = String(req.query.topic || "anything");
-    const n = Number(req.query.n || 3);
-    const items = await AIGenerator.generateQuestions(topic, n);
-    res.json({ ok: true, items });
+    const r = await fetch(`${SERVICES.VOTING}/votes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req.body),
+    });
+    const data = await r.json();
+    res.status(r.status).json(data);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok: false, error: "AI generation failed" });
+    res.status(502).json({ ok: false, error: "voting-service unreachable" });
   }
 });
 
-// Alias /api/ai/generate -> /api/v1/ai/generate
-async function handleAiGenerate(req, res) {
+// risultati grezzi per una domanda (facoltativo)
+app.get("/api/votes/results/:questionId", async (req, res) => {
   try {
-    const topic = String(req.body?.topic ?? "").trim() || "anything";
-    const n = Math.max(1, Math.min(20, Number(req.body?.n ?? 5)));
-    const items = await AIGenerator.generateQuestions(topic, n);
-    res.json({ ok: true, items });
+    const r = await fetch(`${SERVICES.VOTING}/votes/results/${req.params.questionId}`);
+    const data = await r.json();
+    res.status(r.status).json(data);
   } catch (err) {
-    const msg = err?.message || "AI generation failed";
-    console.error("Route /ai/generate failed:", msg);
-    res.status(500).json({ ok: false, error: msg });
+    res.status(502).json({ ok: false, error: "voting-service unreachable" });
   }
-}
-
-app.post("/api/v1/ai/generate", handleAiGenerate);
-app.post("/api/ai/generate", handleAiGenerate); // optional alias for older frontend
-// 404 catcher with logging
-app.use((req, res) => {
-  console.warn("No route matched:", req.method, req.originalUrl);
-  res.status(404).json({ ok: false, error: "Not found", path: req.originalUrl });
 });
 
-app.listen(8080, () => console.log("API Gateway running on http://localhost:8080"));
-
-
+// ✅ CORRETTO: inoltra alla rotta reale /leaderboard/:groupId del voting-service
+app.get("/api/groups/:groupId/leaderboard", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.VOTING}/leaderboard/${req.params.groupId}`);
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+    res.status(502).json({ ok: false, error: "voting-service unreachable" });
+  }
+});
 
 // -----------------------------
 // 404 & error handler
@@ -493,7 +467,10 @@ app.use((req, res) => {
 
 app.use((err, req, res, _next) => {
   console.error("Gateway error:", err);
-  res.status(err.status || 500).type("application/json").send({ ok: false, error: err.message || "Internal error" });
+  res
+    .status(err.status || 500)
+    .type("application/json")
+    .send({ ok: false, error: err.message || "Internal error" });
 });
 
 // -----------------------------
