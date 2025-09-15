@@ -1,36 +1,70 @@
 // voting-app/lib/api.ts
-/*
-function resolveApiBase() {
-  // In SSR (Node dentro Docker) → usa il service name interno
-  if (typeof window === "undefined") {
-    return process.env.SERVER_API_BASE || "http://api-gateway:8080";
-  }
-  // In browser → usa l’host raggiungibile dall’esterno
-  return process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8080";
-}
 
-export const API_BASE = resolveApiBase();
-*/
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
 
-
-function assertJsonResponse(res: Response) {
-  const ct = res.headers.get("content-type") || "";
-  if (!ct.includes("application/json")) {
-    return res.text().then(t => {
-      throw new Error(`HTTP ${res.status} ${res.statusText} – non-JSON: ${t.slice(0,200)}...`);
-    });
-  }
-  return res.json();
+/* ─────────────────────────────────────────────────────
+ * Auth helpers (token in localStorage)
+ * ────────────────────────────────────────────────────*/
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("accessToken");
 }
 
-/* =========================
+export function setToken(token: string) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("accessToken", token);
+}
+
+export function clearToken() {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem("accessToken");
+}
+
+function getCurrentUser(): { id: string; email?: string; name?: string } | null {
+  if (typeof window === "undefined") return null;
+  const raw = localStorage.getItem("currentUser");
+  try { return raw ? JSON.parse(raw) : null; } catch { return null; }
+}
+
+/** ID utente corrente dalla UI (salvato in localStorage dopo il login). */
+export function getCurrentUserId(): string {
+  return getCurrentUser()?.id || "";
+}
+
+/* ─────────────────────────────────────────────────────
+ * fetch con Authorization automatico
+ * ────────────────────────────────────────────────────*/
+async function authFetch(input: RequestInfo | URL, init: RequestInit = {}) {
+  const token = getToken();
+  const headers = new Headers(init.headers || {});
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (!headers.has("Content-Type") && init.body) headers.set("Content-Type", "application/json");
+  return fetch(input, { ...init, headers });
+}
+
+/* ─────────────────────────────────────────────────────
+ * Helpers JSON
+ * ────────────────────────────────────────────────────*/
+async function asJson<T = any>(r: Response): Promise<T> {
+  const txt = await r.text();
+  try { return JSON.parse(txt); } catch { return txt as any; }
+}
+
+function ensureOk(data: any, r: Response, fallbackMsg = "Request failed") {
+  if (!r.ok) {
+    const msg = (data && (data.error || data.message)) || fallbackMsg;
+    throw new Error(msg);
+  }
+}
+
+/* ─────────────────────────────────────────────────────
  * Types usati dal frontend
- * ========================= */
-export type Member = { id: string; name: string; avatarUrl?: string | null};
+ * ────────────────────────────────────────────────────*/
+export type Member = { id: string; name: string; avatarUrl?: string | null };
 export type Group = {
   id: string;
   name: string;
+  joinCode?: string;
   leader?: { id: string; name: string } | null;
   members?: Member[];
   points?: Record<string, number>;
@@ -39,7 +73,12 @@ export type Group = {
 };
 
 
-export type LeaderboardEntry = { userId: string; name: string; points: number };
+export type LeaderboardEntry = { 
+  userId: string; 
+  name: string; 
+  votes: number 
+};
+
 export type LeaderboardResponse = {
   questionText: string;
   voted: string[];
@@ -57,24 +96,9 @@ export type PendingQuestionResponse =
   | { hasPending: false; question?: undefined }
   | { hasPending: true; question: PendingQuestion };
 
-export type InviteResponse = { ok: boolean; code?: string; error?: string };
-export type JoinByCodeResponse = { ok: boolean; groupId?: string; groupName?: string; error?: string };
+export type ApiOk = { ok: true };
+export type ApiErr = { ok: false; error: string };
 
-export type UserScores = {
-  totalPoints: number;
-  groupPoints: Array<{ groupId: string; groupName: string; points: number }>;
-};
-
-export type UpdateProfilePayload = Partial<
-  Pick<UserProfile, "username" | "email" | "avatarUrl">
->;
-export type InviteMembersPayload = {
-  userIds?: string[];     
-  emails?: string[];     
-};
-
-export type ApiError = { error: string; code?: string; status?: number };
-/** Aggiunto: profilo utente, coerente con l'API gateway */
 export interface UserProfile {
   id: string;
   username: string;
@@ -82,133 +106,93 @@ export interface UserProfile {
   avatarUrl: string;
   createdAt?: string;
 }
-export type ApiOk = { ok: true };
-export type ApiErr = { ok: false; error: string };
-/* =========================
- * Helper JSON
- * ========================= */
-async function j<T>(r: Response): Promise<T> {
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = (data as any)?.error ?? `HTTP ${r.status}`;
-    throw new Error(msg);
-  }
-  return data as T;
-}
-/* =========================
- * Helpers
- * ========================= */
-async function asJson<T = any>(r: Response): Promise<T> {
-  const txt = await r.text();
-  try {
-    return JSON.parse(txt);
-  } catch {
-    return txt as any;
-  }
-}
 
-/* =========================================================
+/* ─────────────────────────────────────────────────────
  * GROUPS
- * ========================================================= */
+ * ────────────────────────────────────────────────────*/
+/** Lista gruppi di un utente (protetta: richiede token). */
+export async function getUserGroups(userId: string): Promise<Group[]> {
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/groups`, { cache: "no-store" });
+  const data = await asJson(r);
+  ensureOk(data, r, "Unable to fetch groups");
+  // gateway può restituire array diretto o { groups:[...] }
+  return Array.isArray(data) ? data : (data.groups ?? []);
+}
+
+/** (Facoltativa) lista di tutti i gruppi. */
 export async function getGroups(): Promise<Group[]> {
-  const r = await fetch(`${API_BASE}/api/groups`, { cache: "no-store" });
-  return j<Group[]>(r);
+  const r = await authFetch(`${API_BASE}/api/groups`, { cache: "no-store" });
+  const data = await asJson(r);
+  // ensureOk(data, r, "Unable to fetch groups");
+  // return Array.isArray(data) ? data : (data.groups ?? data);
+  if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+  // alcuni servizi rispondono { ok:true, group }, altri direttamente il group
+  return data?.group ?? data;
 }
 
+/** Dettaglio gruppo (gateway può rispondere { ok, group } o gruppo diretto). */
 export async function getGroup(groupId: string): Promise<Group> {
-  const r = await fetch(`${API_BASE}/api/groups/${groupId}`, { cache: "no-store" });
-  return j<Group>(r);
+  const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}`, { cache: "no-store" });
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Group not found");
+  return data?.group ?? data;
 }
 
-// lib/api.ts (modifica solo la funzione createGroup)
+/** Membri del gruppo (gateway normalizza in array). */
+export async function getGroupMembers(groupId: string): Promise<Member[]> {
+  const r = await authFetch(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/members`, { cache: "no-store" });
+  const data = await asJson(r);
+  ensureOk(data, r, "Unable to fetch members");
+  return Array.isArray(data) ? data : (data.members ?? []);
+}
 
+/** Crea un nuovo gruppo (leaderId ricavato dal token dal gateway). */
 export async function createGroup(payload: {
   name: string;
   notificationTime?: "morning" | "afternoon" | "evening" | "midday";
   disableSelfVote?: boolean;
 }): Promise<{ ok: boolean; group?: Group; error?: string }> {
-
-  // Prendi token da localStorage
-  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
-  if (!token) {
-    return { ok: false, error: "Not authenticated" };
-  }
-
-  const r = await fetch(`${API_BASE}/api/groups`, {
+  const r = await authFetch(`${API_BASE}/api/groups`, {
     method: "POST",
     cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${token}`,
-    },
     body: JSON.stringify(payload),
   });
-
-  let data: any;
-  try {
-    data = await r.json();
-  } catch (err) {
-    return { ok: false, error: "Failed to parse response" };
-  }
-
-  // ✅ Normalizza sempre la risposta
-  if (data?.group && data.group.id) {
-    return { ok: true, group: data.group };
-  } else if (data?.id) {
-    return { ok: true, group: data as Group };
-  } else {
-    return { ok: false, error: data?.error ?? "No group returned" };
-  }
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Create group failed" };
+  return { ok: true, group: data?.group ?? data };
 }
 
-
-export async function getGroupMembers(groupId: string): Promise<Member[]> {
-  const r = await fetch(`${API_BASE}/api/groups/${groupId}/members`, { cache: "no-store" });
-  return j<Member[]>(r);
+/** Entra in un gruppo con codice (userId preso dal token lato gateway). */
+export async function joinGroupByCode(
+  code: string,
+  _userId?: string,  // compat: ignorato; il gateway usa il token
+  _userName?: string
+): Promise<{ ok: boolean; groupId?: string; error?: string }> {
+  const r = await authFetch(`${API_BASE}/api/groups/join`, {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Join failed");
+  return data;
 }
 
-
-export async function getLeaderboard(groupId: string): Promise<LeaderboardResponse> {
-  try {
-    const r = await fetch(`${API_BASE}/api/groups/${groupId}/leaderboard`, { cache: "no-store" });
-    if (r.ok) return j(r);
-  } catch { /* ignore */ }
-  return { questionText: "", voted: [], entries: [] };
-}
-
-
-export async function inviteMembers(
-  groupId: string,
-  payload: InviteMembersPayload
-): Promise<{ ok: true; invitations?: number }> {
-  const emails = (payload.emails ?? []).filter(Boolean);
-  let ok = 0;
-
-  for (const email of emails) {
-    const r = await fetch(`${API_BASE}/api/groups/${groupId}/invites`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email,
-        createdByUserId: getCurrentUserId() || "usr_alice",
-        expiresInHours: 72,
-      }),
-    });
-    if (r.ok) ok++;
-  }
-
-  return { ok: true, invitations: ok };
-}
-
-
-/* =========================================================
+/* ─────────────────────────────────────────────────────
  * QUESTIONS & VOTES
- * ========================================================= */
-export async function getPendingQuestion(groupId: string, userId: string): Promise<PendingQuestionResponse> {
-  const u = new URL(`${API_BASE}/api/groups/${groupId}/pending-question`);
-  u.searchParams.set("userId", userId);
-  const r = await fetch(u.toString(), { cache: "no-store" });
-  return j<PendingQuestionResponse>(r);
+ * ────────────────────────────────────────────────────*/
+export async function getPendingQuestion(groupId: string, userId?: string): Promise<PendingQuestionResponse> {
+  const u = new URL(`${API_BASE}/api/groups/${encodeURIComponent(groupId)}/pending-question`);
+  if (userId) u.searchParams.set("userId", userId);
+  const r = await authFetch(u.toString(), { cache: "no-store" });
+  const data = await asJson(r);
+  if (!r.ok) return { hasPending: false };
+  // normalizza: backend può già dare { hasPending: true/false, question? }
+  if (typeof data?.hasPending === "boolean") return data as PendingQuestionResponse;
+  // fallback legacy
+  if (Array.isArray(data) && data.length > 0) {
+    return { hasPending: true, question: data[0] as PendingQuestion };
+  }
+  return { hasPending: false };
 }
 
 export async function createQuestion(payload: {
@@ -217,25 +201,15 @@ export async function createQuestion(payload: {
   expiresInHours?: number;
 }): Promise<{ ok: boolean; questionId?: string; error?: string }> {
   const expiresAt = new Date(Date.now() + (payload.expiresInHours ?? 24) * 60 * 60 * 1000).toISOString();
-
-  const r = await fetch(`${API_BASE}/api/questions`, {
+  const r = await authFetch(`${API_BASE}/api/questions`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     cache: "no-store",
-    body: JSON.stringify({
-      groupId: payload.groupId,
-      text: payload.text,
-      expiresAt
-    }),
+    body: JSON.stringify({ groupId: payload.groupId, text: payload.text, expiresAt }),
   });
-
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) return { ok: false, error: data?.message || "createQuestion failed" };
-
-  // il question-service ritorna { id, groupId, text, ... }
-  return { ok: true, questionId: data.id };
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.message || data?.error || "createQuestion failed" };
+  return { ok: true, questionId: data.id ?? data.questionId };
 }
-
 
 export async function sendVote(payload: {
   groupId: string;
@@ -243,52 +217,45 @@ export async function sendVote(payload: {
   voterId: string;
   votedUserId: string;
 }): Promise<{ ok: boolean; error?: string }> {
-  const r = await fetch(`${API_BASE}/api/votes`, {
+  const r = await authFetch(`${API_BASE}/api/votes`, {
     method: "POST",
     cache: "no-store",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return j(r);
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Vote failed" };
+  return { ok: true };
 }
 
-/* =========================================================
- * INVITES
- * ========================================================= */
-// export async function createInvite(
-//   groupId: string,
-//   payload: { userIds?: string[]; emails?: string[] } = {}
-// ): Promise<InviteResponse> {
-//   const r = await fetch(`${API_BASE}/api/groups/${groupId}/invite`, {
-//     method: "POST",
-//     cache: "no-store",
-//     headers: { "Content-Type": "application/json" },
-//     body: JSON.stringify(payload),
-//   });
-//   return j(r);
-// }
-
-export async function joinGroupByCode(payload: { code: string; userId: string; userName?: string; }): Promise<JoinByCodeResponse> {
-  const r = await fetch(`${API_BASE}/api/invites/redeem`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return j(r);
+// === Get group leaderboard ===
+// Accetta sia risposta come array puro, sia { ok:true, leaderboard:[...] }
+export async function getLeaderboard(groupId: string): Promise<LeaderboardEntry[]> {
+  const r = await fetch(
+    `${API_BASE}/api/gruppo/${groupId}/stats`,
+    { cache: "no-store" }
+  );
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    throw new Error(data?.error || `HTTP ${r.status}`);
+  }
+  const arr = Array.isArray(data) ? data : (data?.leaderboard ?? []);
+  return (arr || []) as LeaderboardEntry[];
 }
 
 
-/* =========================================================
- * USER SCORES (già presente nel tuo file)
- * ========================================================= */
-// ---- Scores (ritorna il payload "snello" atteso dalle pagine)
+/* ─────────────────────────────────────────────────────
+ * SCORES (se usato nella tua UI)
+ * ────────────────────────────────────────────────────*/
+export type UserScores = {
+  totalPoints: number;
+  groupPoints: Array<{ groupId: string; groupName: string; points: number }>;
+};
+
 export async function getUserScores(userId: string): Promise<UserScores | ApiErr> {
-  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/scores`, {
-    cache: "no-store",
-  });
-  const data = await asJson<{ ok: boolean; totalPoints?: number; groupPoints?: any; error?: string }>(r);
-  if (!data || (data as any).ok === false) {
-    return { ok: false, error: (data as any)?.error || "Unable to fetch scores" } as ApiErr;
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/scores`, { cache: "no-store" });
+  const data = await asJson<{ ok?: boolean; totalPoints?: number; groupPoints?: any; error?: string }>(r);
+  if (!r.ok || data?.ok === false) {
+    return { ok: false, error: data?.error || "Unable to fetch scores" } as ApiErr;
   }
   return {
     totalPoints: data.totalPoints ?? 0,
@@ -296,92 +263,69 @@ export async function getUserScores(userId: string): Promise<UserScores | ApiErr
   };
 }
 
-/* =========================================================
- * DELETE ACCOUNT (già presente nel tuo file)
- * ========================================================= */
-export async function deleteAccount(userId: string): Promise<ApiOk | ApiErr> {
-  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
-    method: "DELETE",
-    cache: "no-store",
-  });
-  return asJson(r);
-}
-
-/* =========================================================
- * Aggiunte per /app/profile/page.tsx
- * ========================================================= */
-
-/** ID utente dal localStorage (compatibile con le tue pagine). */
-export function getCurrentUserId(): string {
-  if (typeof window === "undefined") return "";
-  const userStr = localStorage.getItem("currentUser");
-  if (!userStr) return "";
-  try {
-    const user = JSON.parse(userStr);
-    return user.id || "";
-  } catch {
-    return "";
-  }
-}
-
-
-// ---- Profile (nuovi nomi)
+/* ─────────────────────────────────────────────────────
+ * PROFILE / ACCOUNT
+ * ────────────────────────────────────────────────────*/
 export async function getUserProfile(
   userId: string
 ): Promise<{ ok: true; profile: UserProfile } | ApiErr> {
-  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
-    cache: "no-store",
-  });
-  return asJson(r);
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, { cache: "no-store" });
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Profile not found" };
+  return data;
 }
 
-/** PUT profilo utente */
+export type UpdateProfilePayload = Partial<Pick<UserProfile, "username" | "email" | "avatarUrl">>;
+
 export async function updateUserProfile(
   userId: string,
   payload: UpdateProfilePayload
 ): Promise<{ ok: true; profile: UserProfile } | ApiErr> {
-  const r = await fetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}/profile`, {
     method: "PUT",
     cache: "no-store",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return asJson(r);
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Update failed" };
+  return data;
 }
 
-// ---- Reset password
-export async function resetPassword(email: string, newPassword: string): Promise<ApiOk | ApiErr> {
-  const r = await fetch(`${API_BASE}/api/users/reset-password`, {
-    method: "POST",
+export async function deleteAccount(userId: string): Promise<ApiOk | ApiErr> {
+  const r = await authFetch(`${API_BASE}/api/users/${encodeURIComponent(userId)}`, {
+    method: "DELETE",
     cache: "no-store",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email, newPassword }),
   });
-  return asJson(r);
+  const data = await asJson(r);
+  if (!r.ok) return { ok: false, error: data?.error || "Delete failed" };
+  return data;
 }
 
-export async function register(payload: { email: string; username?: string; password: string }): Promise<{ ok: true; user: any; token?: string } | ApiErr> {
-  const res = await fetch(`${API_BASE}/api/auth/register`, {
+/* ─────────────────────────────────────────────────────
+ * AUTH (gateway emette token fittizio token-<userId>-<ts>)
+ * ────────────────────────────────────────────────────*/
+export async function register(payload: { email: string; username: string; password: string }) {
+  const r = await fetch(`${API_BASE}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return assertJsonResponse(res);
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Register failed");
+  return data as { ok: true; user: any; token: string };
 }
 
-
-export async function login(email: string, password: string): Promise<{ ok: true; user: any; token: string } | ApiErr> {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
+export async function login(email: string, password: string) {
+  const r = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  return asJson(res);
+  const data = await asJson(r);
+  ensureOk(data, r, data?.error || "Login failed");
+  return data as { ok: true; user: any; token: string };
 }
 
-
-/* =========================
- * Alias compatibilità con import esistenti
- * ========================= */
-export const getProfile = getUserProfile;       // compatibile con /profile/page.tsx
-export const updateProfile = updateUserProfile; // compatibile con /profile/page.tsx
+/** Alias compatibilità storica */
+export const getProfile = getUserProfile;
+export const updateProfile = updateUserProfile;

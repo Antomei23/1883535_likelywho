@@ -1,56 +1,62 @@
 "use client";
 
-import React, { use as usePromise, useMemo, useState, useEffect } from "react";
+import React, { use as usePromise, useEffect, useMemo, useState, useCallback } from "react";
 import Link from "next/link";
-import { getGroupMembers, inviteMembers, Member } from "@/lib/api";
+import { getGroup } from "@/lib/api";
 
 type Params = { id: string };
-
-type Friend = { id: string; name: string };
 
 export default function InvitePlayersPage({ params }: { params: Promise<Params> }) {
   const { id } = usePromise(params);
 
-  const inviteLink = useMemo(() => `https://likelywho.app.link/invite?group=${id}`, [id]);
-  const [groupMembers, setGroupMembers] = useState<Member[]>([]);
-  const [addedIds, setAddedIds] = useState<Record<string, boolean>>({});
-  const [emails, setEmails] = useState<string>("");
-  const [submitting, setSubmitting] = useState(false);
+  const [joinCode, setJoinCode] = useState<string>("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     (async () => {
       try {
-        const m = await getGroupMembers(id);
-        if (live) setGroupMembers(m.members);
+        const g = await getGroup(id);
+        if (!live) return;
+        setJoinCode(g.joinCode ?? "");
       } catch (e) {
         console.error(e);
+        if (live) setError("Impossibile recuperare il codice del gruppo.");
       }
     })();
     return () => { live = false; };
   }, [id]);
 
-  const toggleAdd = (f: Friend) =>
-    setAddedIds((prev) => ({ ...prev, [f.id]: !prev[f.id] }));
+  const joinPageUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const u = new URL("/unisciti-gruppo", window.location.origin);
+    if (joinCode) u.searchParams.set("code", joinCode);   // precompila il codice nella pagina
+    return u.toString();
+  }, [joinCode]);
 
-  const handleInvite = async () => {
+  const copyCode = useCallback(async () => {
+    try { await navigator.clipboard.writeText(joinCode); alert("Codice copiato!"); }
+    catch { alert("Non sono riuscito a copiare il codice 😅"); }
+  }, [joinCode]);
+
+  const copyLink = useCallback(async () => {
+    try { await navigator.clipboard.writeText(joinPageUrl); alert("Link copiato!"); }
+    catch { alert("Non sono riuscito a copiare il link 😅"); }
+  }, [joinPageUrl]);
+
+  const share = useCallback(async () => {
     try {
-      setSubmitting(true);
-      const payload = {
-        userIds: Object.entries(addedIds).filter(([, v]) => v).map(([k]) => k),
-        emails: emails.split(/[,\s;]+/).map((e) => e.trim()).filter(Boolean),
-      };
-      await inviteMembers(id, payload);
-      alert("Inviti inviati!");
-      setAddedIds({});
-      setEmails("");
-    } catch (e) {
-      console.error(e);
-      alert("Errore durante l'invio degli inviti");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+      if ((navigator as any).share) {
+        await (navigator as any).share({
+          title: "Unisciti al mio gruppo",
+          text: `Usa questo codice per entrare: ${joinCode}`,
+          url: joinPageUrl,
+        });
+      } else {
+        await copyLink();
+      }
+    } catch { /* annullato dall'utente */ }
+  }, [joinCode, joinPageUrl, copyLink]);
 
   return (
     <div style={styles.page}>
@@ -62,43 +68,22 @@ export default function InvitePlayersPage({ params }: { params: Promise<Params> 
       </div>
 
       <div style={styles.content}>
-        <h2 style={styles.title}>Invite players</h2>
+        <h2 style={styles.title}>Aggiungi giocatori</h2>
 
-        {/* QR + Link di invito */}
         <div style={styles.card}>
-          <div style={{ display: "grid", gridTemplateColumns: "120px 1fr", gap: 16, alignItems: "center" }}>
-            <div style={styles.qrBox}><div style={{ opacity: .6, fontSize: 12 }}>QR Code</div></div>
-            <div>
-              <div style={styles.label}>Share link</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
-                <code style={styles.linkCode}>{inviteLink}</code>
-                <button style={styles.copyBtn} onClick={() => navigator.clipboard?.writeText(inviteLink)}>📋 Copy</button>
-              </div>
-            </div>
+          <div style={styles.label}>Codice del gruppo</div>
+          <div style={styles.code}>{joinCode || "— — — — — —"}</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+            <button style={styles.btnPrimary} onClick={copyCode} disabled={!joinCode}>📋 Copia codice</button>
+            <button style={styles.btnSecondary} onClick={share} disabled={!joinCode}>Condividi</button>
+            <Link style={styles.btnSecondary} href={joinPageUrl || "/unisciti-gruppo"}>Apri “Unisciti al gruppo”</Link>
           </div>
-        </div>
-
-        {/* Add by email */}
-        <div style={styles.card}>
-          <div style={styles.label}>Invite by email</div>
-          <textarea
-            value={emails}
-            onChange={(e) => setEmails(e.target.value)}
-            placeholder="email1@example.com, email2@example.com"
-            style={{ width: "100%", height: 90, marginTop: 8, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" }}
-          />
-          <button
-            onClick={handleInvite}
-            disabled={submitting}
-            style={{ ...styles.btnPrimary, width: "100%", marginTop: 10, opacity: submitting ? .6 : 1 }}
-          >
-            {submitting ? "Sending…" : "Send invites"}
-          </button>
+          {error && <div style={{ marginTop: 10, color: "#b00020" }}>{error}</div>}
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <Link href={`/gruppo/${id}`} style={styles.btnSecondary}>Done</Link>
-          <Link href={`/gruppo/${id}/stats`} style={styles.btnSecondary}>View stats</Link>
+          <Link href={`/gruppo/${id}`} style={styles.btnSecondary}>Fine</Link>
+          <Link href={`/gruppo/${id}/stats`} style={styles.btnSecondary}>Vedi statistiche</Link>
         </div>
       </div>
     </div>
@@ -110,16 +95,11 @@ const styles: { [k: string]: React.CSSProperties } = {
   header: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 24px", backgroundColor: "#fff", boxShadow: "0 4px 6px rgba(0,0,0,.1)" },
   menuButton: { fontSize: 22, textDecoration: "none", color: "#333" },
   userButton: { fontSize: 22, color: "#333" },
-  content: { padding: 24, maxWidth: 420, margin: "0 auto", display: "grid", gap: 14 },
+  content: { padding: 24, maxWidth: 480, margin: "0 auto", display: "grid", gap: 14 },
   title: { margin: 0, fontSize: 22, fontWeight: 700, textAlign: "center" },
-  card: { backgroundColor: "#fff", padding: 16, borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,.05)" },
+  card: { backgroundColor: "#fff", padding: 16, borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,.05)", textAlign: "center" },
   label: { fontSize: 12, textTransform: "uppercase", letterSpacing: .4, color: "#6b7280" },
-  qrBox: { width: 120, height: 120, borderRadius: 12, border: "1px dashed #cbd5e1", display: "grid", placeItems: "center", background: "#f8fafc" },
-  linkCode: { background: "#f3f4f6", padding: "8px 10px", borderRadius: 8, fontSize: 12 },
-  copyBtn: { background: "#e5e7eb", border: "none", borderRadius: 8, padding: "8px 10px", cursor: "pointer" },
-  friendChip: { background: "#fff7d6", border: "1px solid #f4e4a1", borderRadius: 10, padding: "8px 12px", fontWeight: 600, cursor: "pointer" },
-  friendChipAdded: { background: "#dcfce7", borderColor: "#86efac" },
-  friendChipDisabled: { background: "#eef2f7", borderColor: "#e5e7eb", color: "#9aa0a6", cursor: "not-allowed" },
-  btnPrimary: { backgroundColor: "#4CAF50", color: "#fff", padding: "12px 18px", borderRadius: 8, textDecoration: "none", fontWeight: 700 },
-  btnSecondary: { backgroundColor: "#007bff", color: "#fff", padding: "12px 18px", borderRadius: 8, textDecoration: "none", fontWeight: 700 },
+  code: { fontSize: 30, fontWeight: 800, letterSpacing: 4, margin: "8px 0 14px" },
+  btnPrimary: { backgroundColor: "#4CAF50", color: "#fff", padding: "12px 18px", borderRadius: 8, textDecoration: "none", fontWeight: 700, border: "none", cursor: "pointer" },
+  btnSecondary: { backgroundColor: "#007bff", color: "#fff", padding: "10px 14px", borderRadius: 8, textDecoration: "none", fontWeight: 700, border: "none" },
 };

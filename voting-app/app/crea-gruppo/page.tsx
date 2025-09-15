@@ -12,8 +12,7 @@ const CreaGruppoPage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-
+const handleSubmit = async (e: React.FormEvent) => {
   e.preventDefault();
   setError(null);
   if (!groupName.trim()) {
@@ -24,31 +23,22 @@ const CreaGruppoPage = () => {
   try {
     setSubmitting(true);
 
-    // Prendi il token dal localStorage
-    const token = localStorage.getItem("accessToken");
-    console.log("Token:", token); // <- controllo formato
-    if (!token) {
-      setError("Utente non autenticato.");
-      setSubmitting(false);
-      return;
-    }
-
-    // Invia direttamente la richiesta con il token
     const data = await createGroup({
       name: groupName.trim(),
       notificationTime,
       disableSelfVote,
     });
-    console.log("createGroup response:", data);
-    console.log("data.group:", data.group);
-    console.log("data.group.id:", data.group?.id);
-
 
     if (!data?.ok || !data?.group?.id) {
       throw new Error(data?.error || "Creazione gruppo fallita");
     }
 
-    router.push(`/crea-gruppo/step2?groupId=${encodeURIComponent(data.group.id)}`);
+    const q = new URLSearchParams({
+      groupId: data.group.id,
+      ...(data.group.joinCode ? { joinCode: data.group.joinCode } : {}),
+    }).toString();
+
+    router.push(`/crea-gruppo/step2?${q}`);
   } catch (err) {
     console.error(err);
     setError("Errore nella creazione del gruppo. Riprova.");
@@ -56,6 +46,7 @@ const CreaGruppoPage = () => {
     setSubmitting(false);
   }
 };
+
 
 
   return (

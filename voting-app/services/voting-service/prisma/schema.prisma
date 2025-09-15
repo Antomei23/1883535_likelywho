@@ -1,22 +1,24 @@
+// services/voting-service/prisma/schema.prisma
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  // schema = "votes"   <-- opzionale, se vuoi specificare lo schema
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
   shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 model Vote {
   id          String   @id @default(uuid())
+  groupId     String
   questionId  String
   voterId     String
   votedUserId String
   createdAt   DateTime @default(now())
 
   @@unique([questionId, voterId])
+  @@index([groupId])
   @@index([questionId])
   @@index([votedUserId])
 }
