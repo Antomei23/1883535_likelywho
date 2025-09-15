@@ -2,8 +2,6 @@
 import express, { Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import groupRoutes from './routes/groups';
-// import inviteRoutes from './routes/invites';
 import crypto from "crypto";
 
 function generateJoinCode(len = 6) {
@@ -17,7 +15,6 @@ function generateJoinCode(len = 6) {
 
 const app = express();
 app.use(express.json());
-app.use(groupRoutes);
 // app.use(inviteRoutes);
 
 // Middleware per loggare tutte le richieste
@@ -244,19 +241,30 @@ app.get('/groups/:groupId/members', async (req: Request, res: Response) => {
 });
 
 // Recupera un gruppo per ID
-app.get('/groups/:groupId', async (req: Request, res: Response) => {
+// user-service/src/index.ts  (route GET /groups/:groupId)
+app.get('/groups/:groupId', async (req, res) => {
   try {
-    const group = await prisma.group.findUnique({
+    const g = await prisma.group.findUnique({
       where: { id: req.params.groupId },
       include: { leader: true, members: { include: { user: true } } },
     });
-    if (!group) return res.status(404).json({ ok: false, error: "Group not found" });
-    res.json({ ok: true, group });
+    if (!g) return res.status(404).json({ ok: false, error: "Group not found" });
+
+    // normalizza i membri
+    const members = g.members.map(m => ({
+      id: m.user.id,
+      name: m.user.name,
+      avatarUrl: m.user.avatarUrl,
+      role: m.role,
+    }));
+
+    res.json({ ok: true, group: { id: g.id, name: g.name, joinCode: g.joinCode, leader: g.leader, members } });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
 
 // GET /users/:userId/groups -> lista gruppi a cui l'utente appartiene
 app.get('/users/:userId/groups', async (req: Request, res: Response) => {

@@ -1,126 +1,108 @@
-// import { PrismaClient } from '@prisma/client';
-// const prisma = new PrismaClient();
-
-// async function main() {
-//   // Utenti demo
-//   const alice = await prisma.user.upsert({
-//     where: { email: 'alice@example.com' },
-//     update: {},
-//     create: { id: 'usr_alice', email: 'alice@example.com', name: 'Alice' }
-//   });
-
-//   const bob = await prisma.user.upsert({
-//     where: { email: 'bob@example.com' },
-//     update: {},
-//     create: { id: 'usr_bob', email: 'bob@example.com', name: 'Bob' }
-//   });
-
-//   // Gruppo demo
-//   const group = await prisma.group.upsert({
-//     where: { id: 'grp_demo' },
-//     update: {},
-//     create: { id: 'grp_demo', name: 'Calcetto del Giovedì', leaderId: alice.id }
-//   });
-
-//   // Membership
-//   await prisma.membership.upsert({
-//     where: { userId_groupId: { userId: alice.id, groupId: group.id } },
-//     update: {},
-//     create: { userId: alice.id, groupId: group.id, role: 'leader' }
-//   });
-//   await prisma.membership.upsert({
-//     where: { userId_groupId: { userId: bob.id, groupId: group.id } },
-//     update: {},
-//     create: { userId: bob.id, groupId: group.id, role: 'member' }
-//   });
-
-//   // (Opzionale) riferimento domanda
-//   await prisma.questionRef.upsert({
-//     where: { id: 'q_demo_1' },
-//     update: {},
-//     create: { id: 'q_demo_1', groupId: group.id }
-//   });
-
-//   console.log('Seed user-service OK:', { alice: alice.email, bob: bob.email, group: group.name });
-// }
-
-// main().catch((e) => {
-//   console.error(e);
-//   process.exit(1);
-// }).finally(() => prisma.$disconnect());
-
+// services/user-service/prisma/seed.ts
 import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
+// ====== UTENTI (ID allineati con auth-service) =============================
+const USERS: Array<{ id: string; email: string; name: string }> = [
+  { id: '11111111-1111-1111-1111-111111111111', email: 'alice@example.com',   name: 'Alice'   },
+  { id: '22222222-2222-2222-2222-222222222222', email: 'bob@example.com',     name: 'Bob'     },
+  { id: '55555555-5555-5555-5555-555555555555', email: 'charlie@example.com', name: 'Charlie' },
+  { id: '77777777-7777-7777-7777-777777777777', email: 'dave@example.com',    name: 'Dave'    },
+  { id: '88888888-8888-8888-8888-888888888888', email: 'eva@example.com',     name: 'Eva'     },
+  { id: '99999999-9999-9999-9999-999999999999', email: 'frank@example.com',   name: 'Frank'   },
+];
+
+// ====== GRUPPI (con joinCode fissi) ========================================
+const GROUPS: Array<{
+  id: string;
+  name: string;
+  joinCode: string;
+  leaderEmail: string;
+  membersEmails: string[];
+}> = [
+  {
+    id: 'grp_all',
+    name: 'Gruppo Tutti',
+    joinCode: 'ALLALL', // 6 char, unico
+    leaderEmail: 'alice@example.com',
+    membersEmails: [
+      'alice@example.com',
+      'bob@example.com',
+      'charlie@example.com',
+      'dave@example.com',
+      'eva@example.com',
+      'frank@example.com',
+    ],
+  },
+  {
+    id: 'grp_no_frank',
+    name: 'Gruppo Senza Frank',
+    joinCode: 'NOFRNK', // 6 char, unico
+    leaderEmail: 'bob@example.com',
+    membersEmails: [
+      'alice@example.com',
+      'bob@example.com',
+      'charlie@example.com',
+      'dave@example.com',
+      'eva@example.com',
+      // frank escluso
+    ],
+  },
+];
+
 async function main() {
-  const aliceId = '11111111-1111-1111-1111-111111111111';
-  const bobId   = '22222222-2222-2222-2222-222222222222';
-  const groupId = '33333333-3333-3333-3333-333333333333';
+  // 1) Upsert utenti
+  for (const u of USERS) {
+    await prisma.user.upsert({
+      where: { id: u.id },
+      update: { email: u.email, name: u.name },
+      create: { id: u.id, email: u.email, name: u.name },
+    });
+  }
 
-  // Utente Alice
-  await prisma.user.upsert({
-    where: { id: aliceId },
-    update: { name: 'Alice' },
-    create: {
-      id: aliceId,
-      email: 'alice@example.com',
-      name: 'Alice',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  });
+  // Mappa email -> id per comodità
+  const users = await prisma.user.findMany({ select: { id: true, email: true } });
+  const byEmail = new Map(users.map(u => [u.email, u.id]));
 
-  // Utente Bob
-  await prisma.user.upsert({
-    where: { id: bobId },
-    update: { name: 'Bob' },
-    create: {
-      id: bobId,
-      email: 'bob@example.com',
-      name: 'Bob',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  });
+  // 2) Upsert gruppi + membership
+  for (const g of GROUPS) {
+    const leaderId = byEmail.get(g.leaderEmail);
+    if (!leaderId) throw new Error(`Leader mancante: ${g.leaderEmail}`);
 
-  // Gruppo Demo guidato da Alice
-  await prisma.group.upsert({
-    where: { id: groupId },
-    update: { name: 'Gruppo Demo' },
-    create: {
-      id: groupId,
-      name: 'Gruppo Demo',
-      leaderId: aliceId,
-    },
-  });
+    const group = await prisma.group.upsert({
+      where: { id: g.id },
+      update: { name: g.name, leaderId, joinCode: g.joinCode },
+      create: { id: g.id, name: g.name, leaderId, joinCode: g.joinCode },
+    });
 
-  // Membership Alice come leader
-  await prisma.membership.upsert({
-    where: { userId_groupId: { userId: aliceId, groupId } },
-    update: { role: 'leader' },
-    create: {
-      id: crypto.randomUUID(),
-      userId: aliceId,
-      groupId,
-      role: 'leader',
-    },
-  });
+    // Leader come leader
+    await prisma.membership.upsert({
+      where: { userId_groupId: { userId: leaderId, groupId: group.id } },
+      update: { role: 'leader' },
+      create: { id: crypto.randomUUID(), userId: leaderId, groupId: group.id, role: 'leader' },
+    });
 
-  // Membership Bob come membro
-  await prisma.membership.upsert({
-    where: { userId_groupId: { userId: bobId, groupId } },
-    update: { role: 'member' },
-    create: {
-      id: crypto.randomUUID(),
-      userId: bobId,
-      groupId,
-      role: 'member',
-    },
-  });
+    // Membri (evita doppioni del leader)
+    for (const email of g.membersEmails) {
+      const uid = byEmail.get(email);
+      if (!uid) {
+        console.warn(`⚠️  Utente non trovato "${email}" per gruppo "${g.name}"`);
+        continue;
+      }
+      if (uid === leaderId) continue;
+      await prisma.membership.upsert({
+        where: { userId_groupId: { userId: uid, groupId: group.id } },
+        update: { role: 'member' },
+        create: { id: crypto.randomUUID(), userId: uid, groupId: group.id, role: 'member' },
+      });
+    }
 
-  console.log('✅ Seed completato: Alice + Bob + Gruppo Demo popolati');
+    console.log(`✅ Gruppo pronto: ${group.name} | id=${group.id} | joinCode=${group.joinCode}`);
+  }
+
+  console.log('🌱 Seed user-service COMPLETATO');
 }
 
 main()
