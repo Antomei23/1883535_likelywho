@@ -34,7 +34,7 @@ app.post("/votes", async (req: Request, res: Response) => {
 });
 
 // Leaderboard del gruppo (conteggio voti ricevuti da ciascun membro del gruppo)
-app.get("/groups/:groupId/leaderboard", async (req: Request, res: Response) => {
+app.get("/gruppo/:groupId/stats", async (req: Request, res: Response) => {
   try {
     const groupId = req.params.groupId;
 
@@ -52,7 +52,7 @@ app.get("/groups/:groupId/leaderboard", async (req: Request, res: Response) => {
 
     res.json(leaderboard);
   } catch (err: any) {
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: err.message});
   }
 });
 

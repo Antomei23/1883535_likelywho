@@ -62,12 +62,14 @@ export default function GroupStatsPage() {
   }, [members]);
 
   const sorted = useMemo(
-    () => [...rows].sort((a, b) => b.points - a.points),
+    () => [...rows].sort((a, b) => b.votes - a.votes),
     [rows]
   );
 
   if (loading) return <div style={{ padding: 24 }}>Loading leaderboard…</div>;
   if (err) return <div style={{ padding: 24, color: "#a00" }}>Error: {err}</div>;
+
+  console.log({"culo": rows, "culo-sorted": sorted});
 
   return (
     <div style={styles.page}>
@@ -76,7 +78,7 @@ export default function GroupStatsPage() {
         <h2 style={{ margin: 0 }}>Leaderboard</h2>
         <div />
       </div>
-
+      
       <div style={styles.content}>
         {!sorted.length ? (
           <div style={styles.emptyBox}>No votes yet.</div>
@@ -88,7 +90,7 @@ export default function GroupStatsPage() {
                 <div key={`${row.userId}-${i}`} style={styles.item}>
                   <div style={styles.rank}>{i + 1}</div>
                   <div style={styles.name}>{name}</div>
-                  <div style={styles.points}>{row.points}</div>
+                  <div style={styles.votes}>{row.votes}</div>
                 </div>
               );
             })}
