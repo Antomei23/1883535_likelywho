@@ -90,7 +90,10 @@ export default function LoginPage() {
         </form>
 
         <p style={styles.hint}>
-          Dev hint: se l’utente non esiste nell’<em>auth-service</em>, registra prima (o seed-a una password).
+          Don't have an account? {" "}
+          <a href="/register" style={{ color: "#111827", fontWeight: "600" }}>
+            Sign up
+          </a>
         </p>
       </div>
     </div>
