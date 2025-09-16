@@ -38,7 +38,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       ...(data.group.joinCode ? { joinCode: data.group.joinCode } : {}),
     }).toString();
 
-    router.push(`/crea-gruppo/step2?${q}`);
+    router.push(`/crea-gruppo/success?${q}`);
   } catch (err) {
     console.error(err);
     setError("Errore nella creazione del gruppo. Riprova.");

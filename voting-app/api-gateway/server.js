@@ -275,6 +275,17 @@ app.post("/api/questions", authRequired, async (req, res) => {
   }
 });
 
+app.get("/api/questions/random/:category", async (req, res) => {
+  try {
+    const r = await fetch(`${SERVICES.QUESTION}/questions/random/${req.params.category}`);
+    console.log(r)
+    const data = await r.json();
+    res.status(r.status).json(data);
+  } catch (err) {
+      res.status(502).json({ ok: false, error: err.message });
+  }
+});
+
 // -----------------------------
 // VOTES & LEADERBOARD (proxy verso voting-service)
 // -----------------------------

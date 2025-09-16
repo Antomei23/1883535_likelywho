@@ -3,6 +3,9 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import axios from 'axios'
 
+import questions from './questions_rand.json'
+
+
 const app = express();
 app.use(express.json());
 const prisma = new PrismaClient();
@@ -74,4 +77,27 @@ app.get('/questions/active/:groupId', async (req: Request, res: Response) => {
 const PORT = Number(process.env.PORT) || 4002;
 app.listen(PORT, () => {
   console.log(`question-service on ${PORT}`);
+});
+
+app.get('/questions/random/:category', async (req: Request, res: Response) => {
+  console.log("GET ARRIVATA")
+  console.log(`req.params:`, req.params);
+  if (!req.params.category) return { ok: false, error: `Category is required: ${req.params.category}` };
+
+  // match case-insensitive
+  const key = Object.keys(questions).find(
+    (k) => k.toLowerCase() === String(req.params.category).trim().toLowerCase()
+  );
+  // if (!key) throw new Error(`Unknown category: ${category}`);
+
+  if (!key) return { ok: false, error: `Unknown category: ${req.params.category}` };
+
+  const list = questions[key as keyof typeof questions];
+  if (!Array.isArray(list) || list.length === 0) {
+    throw new Error(`No questions for category: ${key}`);
+  }
+
+  const idx = Math.floor(Math.random() * list.length);
+  console.log(`RISPONDO ALLA GET CON:`, list[idx])
+  return res.json(list[idx]);
 });

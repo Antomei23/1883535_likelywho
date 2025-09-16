@@ -69,8 +69,6 @@ export default function GroupStatsPage() {
   if (loading) return <div style={{ padding: 24 }}>Loading leaderboard…</div>;
   if (err) return <div style={{ padding: 24, color: "#a00" }}>Error: {err}</div>;
 
-  console.log({"culo": rows, "culo-sorted": sorted});
-
   return (
     <div style={styles.page}>
       <div style={styles.header}>

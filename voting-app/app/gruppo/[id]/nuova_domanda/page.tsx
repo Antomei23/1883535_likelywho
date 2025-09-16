@@ -5,7 +5,12 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createQuestion } from "@/lib/api";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8080";
+
 type Params = { id: string };
+
+const categories = ["Game", "Films", "Music", "Food", "Science", "Animal", "Book", "Sport", "Culture", "Fashion"];
+
 
 export default function NewQuestionPage({ params }: { params: Promise<Params> }) {
   const { id } = usePromise(params);
@@ -13,6 +18,7 @@ export default function NewQuestionPage({ params }: { params: Promise<Params> })
 
   const [text, setText] = useState("");
   const [hours, setHours] = useState(24);
+  const [category, setCategory] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,6 +39,25 @@ export default function NewQuestionPage({ params }: { params: Promise<Params> })
       setSubmitting(false);
     }
   };
+
+  const handleRandom = async () => {
+    try {
+      setSubmitting(true);
+
+      const response = await fetch(`${API_BASE}/api/questions/random/${category}`);
+      if (!response.ok) throw new Error("Errore nel recupero della domanda random");
+
+      const data = await response.json();
+      if (!data) throw new Error("Domanda random non valida");
+      
+      setText(data);
+    } catch (e: any) {
+      console.error(e);
+      setError("Errore nel recupero della domanda random. Riprova.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <div style={styles.page}>
@@ -65,6 +90,28 @@ export default function NewQuestionPage({ params }: { params: Promise<Params> })
             onChange={(e) => setHours(parseInt(e.target.value || "24", 10))}
             style={styles.number}
           />
+
+          <label style={{ ...styles.label, marginTop: 12 }}>Categoria (per domanda random)</label>
+          <select style={styles.select} defaultValue="" onChange={(e) => setCategory(e.target.value)}>
+            <option value="" disabled>Seleziona una categoria</option>
+            {categories.map((cat) => (
+              <option key={cat} value={cat}>{cat}</option>
+            ))}
+          </select>
+
+          <button
+            onClick={handleRandom}
+            disabled={!category.trim()}
+            style={{
+              ...styles.btnPrimary,
+              width: "100%",
+              marginTop: 16,
+              opacity: !category.trim() ? 0.65 : 1,
+              cursor: !category.trim() ? "not-allowed" : "pointer",
+            }}
+          >
+            {"Scegli categoria per domanda random"}
+          </button>
 
           {error && <div style={styles.error}>{error}</div>}
 
@@ -104,6 +151,7 @@ const styles: { [k: string]: React.CSSProperties } = {
   label: { fontSize: 12, textTransform: "uppercase", letterSpacing: .4, color: "#6b7280", display: "block", marginTop: 8 },
   textarea: { width: "100%", height: 120, marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" },
   number: { width: 120, marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" },
+  select: { width: "50%", marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", backgroundColor: "white" },
   btnPrimary: { backgroundColor: "#4CAF50", color: "#fff", padding: "12px 18px", borderRadius: 8, textDecoration: "none", fontWeight: 700, border: "none" },
   btnSecondary: { backgroundColor: "#007bff", color: "#fff", padding: "10px 14px", borderRadius: 8, textDecoration: "none", fontWeight: 700 },
   error: { marginTop: 10, color: "#b00020", fontSize: 14 },
