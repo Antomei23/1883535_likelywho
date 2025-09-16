@@ -149,7 +149,7 @@ const styles: { [k: string]: React.CSSProperties } = {
   card: { backgroundColor: "#fff", padding: 16, borderRadius: 10, boxShadow: "0 4px 12px rgba(0,0,0,.05)" },
   h2: { margin: 0, fontSize: 20 },
   label: { fontSize: 12, textTransform: "uppercase", letterSpacing: .4, color: "#6b7280", display: "block", marginTop: 8 },
-  textarea: { width: "100%", height: 120, marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" },
+  textarea: { width: "90%", height: 120, marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical" },
   number: { width: 120, marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1" },
   select: { width: "50%", marginTop: 6, padding: 10, borderRadius: 8, border: "1px solid #cbd5e1", backgroundColor: "white" },
   btnPrimary: { backgroundColor: "#4CAF50", color: "#fff", padding: "12px 18px", borderRadius: 8, textDecoration: "none", fontWeight: 700, border: "none" },

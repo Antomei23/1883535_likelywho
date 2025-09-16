@@ -76,7 +76,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <option value="evening">Evening (8 PM)</option>
         </select>
 
-        <div>If you do not want a player to vote for him/her-self, then check the following box:</div>
+        {/* <div>If you do not want a player to vote for him/her-self, then check the following box:</div>
         <div style={styles.checkboxContainer}>
           <input
             type="checkbox"
@@ -87,7 +87,7 @@ const handleSubmit = async (e: React.FormEvent) => {
           <label htmlFor="disableSelfVote" style={styles.checkboxLabel}>
             Disable self-voting
           </label>
-        </div>
+        </div> */}
 
         {error && <div style={styles.error}>{error}</div>}
 

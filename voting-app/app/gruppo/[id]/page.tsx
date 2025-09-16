@@ -142,9 +142,9 @@ export default function GroupPage() {
             <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
               {/* Se non hai più la pagina invite, puoi rimuovere questo link */}
               <Link href={`/gruppo/${groupId}/invite`} style={styles.btnSecondary}>+ Share code</Link>
-              <button style={styles.btnDanger} onClick={() => alert("TODO: implement delete group")}>
+              {/* <button style={styles.btnDanger} onClick={() => alert("TODO: implement delete group")}>
                 Delete group 🗑️
-              </button>
+              </button> */}
             </div>
           </div>
         </div>

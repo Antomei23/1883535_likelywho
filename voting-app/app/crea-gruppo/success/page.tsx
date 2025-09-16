@@ -72,9 +72,6 @@ export default function SuccessPage() {
 
       <div style={styles.row}>
         <button style={styles.secondary} onClick={copy}>Copia codice</button>
-        <button style={styles.secondary} onClick={() => router.push('/unisciti-gruppo')}>
-          Vai a “Unisciti al gruppo”
-        </button>
         <button style={styles.button} onClick={() => router.push('/home')}>
           Vai alla Home
         </button>
@@ -84,8 +81,6 @@ export default function SuccessPage() {
           </button>
         )}
       </div>
-
-      <p style={{ marginTop: 12, fontSize: 12, color: '#777' }}>ID gruppo: {groupId}</p>
     </div>
   );
 }

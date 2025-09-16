@@ -101,6 +101,7 @@ export default function ProfilePage() {
           <input
             style={styles.input}
             value={profile.username}
+            disabled={true}
             onChange={(e) => onChange("username", e.target.value)}
           />
         </div>
@@ -109,13 +110,14 @@ export default function ProfilePage() {
           <input
             style={styles.input}
             value={profile.email}
+            disabled={true}
             onChange={(e) => onChange("email", e.target.value)}
           />
         </div>
       </div>
 
       <div style={styles.actions}>
-        <button style={styles.primaryBtn} onClick={save} disabled={saving}>
+        {/* <button style={styles.primaryBtn} onClick={save} disabled={saving}>
           {saving ? "Saving..." : "💾 Save Profile"}
         </button>
         <button style={styles.actionBtn} onClick={goChangePassword}>
@@ -123,13 +125,13 @@ export default function ProfilePage() {
         </button>
         <button style={styles.actionBtn} onClick={goScores}>
           🏆 Scores
-        </button>
+        </button> */}
         <button style={styles.logoutBtn} onClick={handleLogout}>
           Log out
         </button>
-        <button style={styles.deleteBtn} onClick={goDeleteAccount}>
+        {/* <button style={styles.deleteBtn} onClick={goDeleteAccount}>
           🗑 Delete account
-        </button>
+        </button> */}
       </div>
     </div>
   );

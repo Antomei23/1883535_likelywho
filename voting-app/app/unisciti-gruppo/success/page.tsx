@@ -73,7 +73,7 @@ export default function SuccessPage() {
 
       <div style={styles.row}>
         <button style={styles.secondary} onClick={copy} disabled={!code}>Copia codice</button>
-        <button style={styles.light} onClick={() => router.push('/unisciti-gruppo')}>Unisciti a un altro gruppo</button>
+        <button style={styles.button} onClick={() => router.push('/unisciti-gruppo')}>Unisciti a un altro gruppo</button>
         <button style={styles.button} onClick={() => router.push('/home')}>Home</button>
         {groupId && (
           <button style={styles.secondary} onClick={() => router.push(`/gruppo/${groupId}`)}>
@@ -81,8 +81,6 @@ export default function SuccessPage() {
           </button>
         )}
       </div>
-
-      {groupId && <p style={{ marginTop: 12, fontSize: 12, color: '#777' }}>ID gruppo: {groupId}</p>}
     </div>
   );
 }

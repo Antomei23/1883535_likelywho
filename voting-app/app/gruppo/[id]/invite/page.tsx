@@ -63,8 +63,12 @@ export default function InvitePlayersPage({ params }: { params: Promise<Params> 
       {/* Header */}
       <div style={styles.header}>
         <Link href={`/gruppo/${id}`} style={styles.menuButton}>←</Link>
-        <div />
-        <div style={styles.userButton}>👤</div>
+      <div />
+        <Link href={`/profile`} style={styles.userButton}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" fill="currentColor" viewBox="0 0 24 24">
+            <path d="M12 12c2.7 0 5-2.3 5-5s-2.3-5-5-5-5 2.3-5 5 2.3 5 5 5zm0 2c-3.3 0-10 1.7-10 5v3h20v-3c0-3.3-6.7-5-10-5z" />
+          </svg>
+        </Link>
       </div>
 
       <div style={styles.content}>
@@ -76,13 +80,13 @@ export default function InvitePlayersPage({ params }: { params: Promise<Params> 
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
             <button style={styles.btnPrimary} onClick={copyCode} disabled={!joinCode}>📋 Copia codice</button>
             <button style={styles.btnSecondary} onClick={share} disabled={!joinCode}>Condividi</button>
-            <Link style={styles.btnSecondary} href={joinPageUrl || "/unisciti-gruppo"}>Apri “Unisciti al gruppo”</Link>
+            {/* <Link style={styles.btnSecondary} href={joinPageUrl || "/unisciti-gruppo"}>Apri “Unisciti al gruppo”</Link> */}
           </div>
           {error && <div style={{ marginTop: 10, color: "#b00020" }}>{error}</div>}
         </div>
 
         <div style={{ display: "flex", gap: 10 }}>
-          <Link href={`/gruppo/${id}`} style={styles.btnSecondary}>Fine</Link>
+          {/* <Link href={`/gruppo/${id}`} style={styles.btnSecondary}>Fine</Link> */}
           <Link href={`/gruppo/${id}/stats`} style={styles.btnSecondary}>Vedi statistiche</Link>
         </div>
       </div>
