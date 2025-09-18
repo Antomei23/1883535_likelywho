@@ -1,0 +1,49 @@
+# LikelyWho?
+- Carlotta Anna Maria Ciani 1881291
+- Michela Fuselli 1883535
+- Silvia Macagnano 1796039 
+- Chiara Maccabruno 1946328 
+- Antonella Mei 1887894
+## Project Description
+The primary objective of this project is to create a distributed application that enables a group of friends to engage in interactive voting on various topics based on themselves. The system will facilitate group interactions by providing entertaining prompts, collecting votes, and presenting the results.
+For example, the application makes the following question to the group: "*Who is the most likely to become a millionaire?*" and each person can vote for one member of the group. At the end the results are shown and the most voted person earns some points.
+### System Description:
+The system is a distributed application designed to:
+1. Exploit distributed architecture, allowing a group of users to form a voting session via a shared invite code or group link.
+2. Provide scalability: The system scales horizontally to accommodate an increasing number of players.
+3. Guarantee persistence by storing player scores, poll state, and other relevant data persistently in a distributed database.
+4. Support secure user authentication mechanisms.
+Present a pre-defined or user-suggested question to the group.
+5. Dynamically generate relevant questions based on a chosen topic.
+6. Enable each participant to vote for another group member.
+7. Aggregate and display the voting results, highlighting the user with the most votes.
+Optionally archive past voting sessions.
+### Potential Users
+- Friends and family groups: Looking for a fun way to connect and stay in touch.
+- Teams or coworkers: Interested in icebreaker activities or informal team-building exercises.
+- Event organizers: Using the app to add interactive and engaging elements to events.
+### Use Cases
+- User Registration: New players can register and create accounts.
+- Game Lobby: members can join or create question rooms with specific or random topics.
+- Scoring and Leaderboards: The system tracks members scores and updates leaderboards accordingly.
+- Question expiration handling: The system properly handles the end of a session, initiating score calculation and updates.
+- Scaling the system: The system dynamically scales to maintain performance as the number of members increases.
+
+# User Stories
+1. As a user, I want to create an account using my email or social login, so that I can participate in voting sessions securely.  
+2. As a user, I want to log in securely, so that my scores and history are saved.  
+3. As a user, I want to reset my password in case I forget it, so that I can regain access to my account.  
+4. As a user, I want to edit my profile (e.g., name, profile picture), so that my friends can recognize me easily in the app.  
+5. As a user, I want to log out of my account securely, so that I can protect my data on shared devices.  
+6. As a user, I want to create a voting session and invite my friends via a link or code, so that we can vote together and I can become the session leader.  
+7. As a user, I want to join an existing voting session using an invitation code, so that I can participate in my friend’s game.  
+8. As a session leader, I want to choose a pre-defined category (e.g., "fun," "career," "future predictions") so that the voting questions are relevant to my group.  
+9. As a user, I want to ask the system to generate a category randomly, so that the voting questions are relevant to my group.  
+10. As a session leader, I want to disable the self-voting choice, so that no participant can vote for themselves.  
+11. As a user, I want the app to randomly generate a fun question based on our chosen topic, so that we always have different questions.  
+12. As a user, I want to vote for one of my friends in response to the question, so that my choice is counted.  
+13. As a user, I want to see a leaderboard of my friends, so that I can compare scores.  
+14. As a user, I want to have all groups in the home page, so that I can access them easily. 
+
+
+
