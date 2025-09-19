@@ -40,7 +40,7 @@
 | List user groups      |   1 |   5 | Low    |      3 |
 | Get group members     |   1 |   5 | Low    |      3 |
 | Check active question |   1 |   4 | Low    |      3 |
-| **Total EQ = 18 FP**  |     |     |            |        |
+| **Total EQ = 12 FP**  |     |     |            |        |
 
 **Total UFP = ILF (42) + EIF (0) + EI (28) + EO (5) + EQ (12) = 86**\
 Assuming the VAF to be 1.00, $\Rightarrow$ **AFP = UFP × VAF = 86 × 1.00 = 101 FP**
