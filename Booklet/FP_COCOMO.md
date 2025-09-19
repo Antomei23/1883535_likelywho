@@ -86,17 +86,11 @@ $
 ---
 
 ### Schedule (Time to Develop)
-$
-TDEV = C \times PM^F
-$ 
+$TDEV = C \times PM^F$ 
 where  
-$
-F = D + 0.2 \times (E - B) = 0.28 + 0.2 \times (1.087 - 0.91) ≈ 0.315
-$
+$F = D + 0.2 \times (E - B) = 0.28 + 0.2 \times (1.087 - 0.91) ≈ 0.315$
 
-$
-TDEV = 3.67 \times 5^{0.315} ≈ 5.5 \, \text{months}
-$
+$TDEV = 3.67 \times 5^{0.315} ≈ 5.5 \, \text{months}$
 
 **Estimated schedule:** ~5 months  
 
