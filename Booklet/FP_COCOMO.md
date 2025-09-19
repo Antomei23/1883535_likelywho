@@ -74,12 +74,8 @@ BE 28 FP × 30 ≈ 0.8k\
 - **Effort Multipliers (ΠEM):** ≈ 1.0 (nominal case)  
 
 ### Effort (Person-Months)
-$
-PM = A \times Size^E \times \prod EM
-$  
-$
-PM = 2.94 \times 2.5^{1.087} \times 1.0 ≈ 5 \, \text{PM}
-$
+$PM = A \times Size^E \times \prod EM$  
+$PM = 2.94 \times 2.5^{1.087} \times 1.0 ≈ 5 \, \text{PM}$
 
 **Estimated effort:** ~5 person-months  
 
@@ -89,7 +85,6 @@ $
 $TDEV = C \times PM^F$ 
 where  
 $F = D + 0.2 \times (E - B) = 0.28 + 0.2 \times (1.087 - 0.91) ≈ 0.315$
-
 $TDEV = 3.67 \times 5^{0.315} ≈ 5.5 \, \text{months}$
 
 **Estimated schedule:** ~5 months  
